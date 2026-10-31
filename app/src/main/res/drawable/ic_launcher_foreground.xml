@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Wallupus: a geometric she-wolf under a crescent moon. 108dp canvas, art kept inside the 66dp
+     safe zone so launcher masks never clip it. Geometry is shared with ic_launcher_monochrome.xml
+     and ic_wolf_glyph.xml; change all three together. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Moon -->
+    <path android:fillColor="#FFF3D9DC" android:pathData="M56,27 A4.5,4.5 0 1,0 56,35 A4,4 0 0,1 56,27 Z" />
+    <!-- Face: shadowed left half, lit right half -->
+    <path android:fillColor="#FF9E1028" android:pathData="M54,40 L46,37 L38,26 L33,45 L27,50 L31,55 L27,61 L33,64 L41,73 L54,83 Z" />
+    <path android:fillColor="#FFD11F40" android:pathData="M54,40 L62,37 L70,26 L75,45 L81,50 L77,55 L81,61 L75,64 L67,73 L54,83 Z" />
+    <!-- Jaw facets -->
+    <path android:fillColor="#FF7A0B1F" android:pathData="M33,64 L41,73 L54,83 L51,70 Z" />
+    <path android:fillColor="#FFAA1431" android:pathData="M75,64 L67,73 L54,83 L57,70 Z" />
+    <!-- Brow-to-muzzle ridge -->
+    <path android:fillColor="#FFEC5269" android:pathData="M54,42 L60,52 L57,70 L54,74 L51,70 L48,52 Z" />
+    <!-- Inner ears -->
+    <path android:fillColor="#FF4A0612" android:pathData="M40,31 L45,38 L37,43 Z M68,31 L63,38 L71,43 Z" />
+    <!-- Winged eyes and nose, cut out to the background colour -->
+    <path android:fillColor="#FF0E0A0B" android:pathData="M36,49 L47,53 L45,57 L41,56 Z M72,49 L61,53 L63,57 L67,56 Z M50,70 L58,70 L54,75 Z" />
+</vector>

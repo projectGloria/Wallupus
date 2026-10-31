@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- DoH upstream + blocklist downloads. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Private-DNS detection on the Home screen, and WorkManager's "unmetered" constraint. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- WorkManager's manifest merges this in for foreground workers. We never run one,
+         so strip it: the final APK should only claim what it actually uses.
+         (WorkManager also merges RECEIVE_BOOT_COMPLETED + WAKE_LOCK; those we keep,
+         they're how the weekly update job survives reboots.) -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE"
+        tools:node="remove" />
+
+    <!-- allowBackup=false kills adb + cloud backup on old Android. On 12+ it does NOT stop
+         device-to-device transfer, hence dataExtractionRules excluding every domain.
+         (This is exactly the hole BlockAds left open.) -->
+    <application
+        android:name=".WallupusApp"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Wallupus"
+        tools:targetApi="35">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- BIND_VPN_SERVICE means only the system can bind/start it. The system binds VPN
+             services with foreground priority, so we don't need startForeground() — and thus
+             no FOREGROUND_SERVICE / notification permissions at all. -->
+        <service
+            android:name=".vpn.WallupusVpnService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+            <!-- Lets you pick Wallupus under Settings → VPN → Always-on VPN,
+                 which handles boot and crash restarts for us. -->
+            <meta-data
+                android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON"
+                android:value="true" />
+        </service>
+    </application>
+</manifest>

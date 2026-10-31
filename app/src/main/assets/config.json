@@ -1,0 +1,39 @@
+{
+  "_comment": "Edit and rebuild. Upstreams are tried in order. Bootstrap IPs let the app reach DoH without asking any plain-text resolver first.",
+  "upstreams": [
+    {
+      "url": "https://dns.quad9.net/dns-query",
+      "bootstrap": ["9.9.9.9", "149.112.112.112", "2620:fe::fe"]
+    },
+    {
+      "url": "https://cloudflare-dns.com/dns-query",
+      "bootstrap": ["1.1.1.1", "1.0.0.1", "2606:4700:4700::1111"]
+    }
+  ],
+  "sources": [
+    {
+      "id": "stevenblack",
+      "name": "StevenBlack Unified",
+      "url": "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
+      "enabled": true
+    },
+    {
+      "id": "adguard-dns",
+      "name": "AdGuard DNS filter",
+      "url": "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt",
+      "enabled": true
+    },
+    {
+      "id": "hagezi-pro",
+      "name": "HaGeZi Multi Pro",
+      "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt",
+      "enabled": false
+    },
+    {
+      "id": "doh-bypass",
+      "name": "Known DoH resolvers (stops apps bypassing the filter)",
+      "url": "asset://doh-bypass.txt",
+      "enabled": true
+    }
+  ]
+}

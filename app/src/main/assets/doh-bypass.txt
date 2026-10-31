@@ -1,0 +1,26 @@
+# Public DNS-over-HTTPS / DoT hostnames. Apps that resolve through these skip our filter,
+# so we block the hostnames themselves (every entry also covers its subdomains).
+# Wallupus's own upstream traffic is excluded from the VPN and uses bootstrap IPs,
+# so listing Quad9/Cloudflare here does not break the app itself.
+#
+# Firefox canary: an NXDOMAIN here tells Firefox to keep its built-in DoH switched off.
+use-application-dns.net
+
+dns.google
+dns.google.com
+cloudflare-dns.com
+one.one.one.one
+dns.quad9.net
+dns9.quad9.net
+dns10.quad9.net
+dns11.quad9.net
+doh.opendns.com
+dns.nextdns.io
+dns.adguard-dns.com
+dns.adguard.com
+doh.cleanbrowsing.org
+dns.mullvad.net
+doh.mullvad.net
+dns.controld.com
+freedns.controld.com
+doh.dns.sb

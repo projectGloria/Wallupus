@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed-icon layer (Android 13+ tints it). Same geometry as ic_launcher_foreground.xml, as one
+     even-odd path so the eyes, nose and inner ears stay visible as holes. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FF000000" android:fillType="evenOdd" android:pathData="M54,40 L46,37 L38,26 L33,45 L27,50 L31,55 L27,61 L33,64 L41,73 L54,83 L67,73 L75,64 L81,61 L77,55 L81,50 L75,45 L70,26 L62,37 Z M40,31 L45,38 L37,43 Z M68,31 L63,38 L71,43 Z M36,49 L47,53 L45,57 L41,56 Z M72,49 L61,53 L63,57 L67,56 Z M50,70 L58,70 L54,75 Z M56,27 A4.5,4.5 0 1,0 56,35 A4,4 0 0,1 56,27 Z" />
+</vector>

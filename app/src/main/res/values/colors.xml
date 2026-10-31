@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#FF0E0A0B</color>
+    <!-- = Palette.Ink: the window behind the first Compose frame, so cold start doesn't flash grey. -->
+    <color name="window_background">#FF0A0708</color>
+</resources>

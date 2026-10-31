@@ -1,0 +1,105 @@
+package dev.wallupus.filter
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.io.File
+
+class FilterTest {
+
+    // The hand-written check replaced this regex for memory reasons; it must accept exactly the same names.
+    @Test fun nameCheckMatchesOriginalRegex() {
+        val spec = Regex("^[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?(\\.[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?)+$")
+        val l63 = "a".repeat(63)
+        val cases = listOf(
+            "", ".", "a", "a.", ".a", "a..b", "a.b", "a.b.", "_dmarc.x.y", "a-b.c", "-a.b", "a-.b", "a.-b", "a.b-",
+            "a.b_", "xn--bcher-kva.example", "A.b", "a b.c", "a*b.c", "1.2.3.4", "$l63.com", "${l63}a.com",
+            "a.$l63", "a.${l63}a", "a-.-b", "ab.c-d-e.f", "a.b.c.d.e.f", "é.com", "a/b.c",
+        )
+        for (c in cases) assertEquals("\"$c\"", spec.matches(c), ListParser.isValidName(c))
+    }
+
+    @Test fun parsesAllThreeFormats() {
+        assertEquals(Rule.Block("ads.example.com"), ListParser.parseLine("0.0.0.0 ads.example.com"))
+        assertEquals(Rule.Block("ads.example.com"), ListParser.parseLine("127.0.0.1\tADS.example.com # comment"))
+        assertEquals(Rule.Block("ads.example.com"), ListParser.parseLine("ads.example.com."))
+        assertEquals(Rule.Block("ads.example.com"), ListParser.parseLine("||ads.example.com^"))
+        assertEquals(Rule.Block("ads.example.com"), ListParser.parseLine("||ads.example.com^\$important"))
+        assertEquals(Rule.Allow("ok.example.com"), ListParser.parseLine("@@||ok.example.com^"))
+    }
+
+    @Test fun skipsNoiseAndUnsupportedSyntax() {
+        listOf(
+            "", "# comment", "! adblock comment", "[Adblock Plus 2.0]",
+            "127.0.0.1 localhost", "0.0.0.0 0.0.0.0", "::1 ip6-loopback",
+            "192.168.1.5 router.lan",      // redirect, not a block
+            "||example.com/ads^",          // path rule
+            "||ads*.example.com^",         // wildcard
+            "example.com##.banner",        // cosmetic
+            "com",                         // single label: would block an entire TLD
+            "10.0.0.1",                    // IP literal
+        ).forEach { assertNull("should skip: '$it'", ListParser.parseLine(it)) }
+    }
+
+    @Test fun normalizesUnicodeToPunycode() {
+        assertEquals("xn--bcher-kva.example", ListParser.normalize("bücher.example"))
+    }
+
+    private fun matcher(
+        block: List<String>, allow: List<String> = emptyList(),
+        userAllow: Set<String> = emptySet(), userBlock: Set<String> = emptySet(),
+    ) = DomainMatcher(
+        block.map { DomainHash.of(it) }.sorted().toLongArray(),
+        allow.map { DomainHash.of(it) }.sorted().toLongArray(),
+        userAllow, userBlock,
+    )
+
+    @Test fun blocksSubdomainsButNotParentsOrLookalikes() {
+        val m = matcher(listOf("doubleclick.net"))
+        assertTrue(m.isBlocked("doubleclick.net"))
+        assertTrue(m.isBlocked("ad.g.doubleclick.net"))
+        assertFalse(m.isBlocked("net"))
+        assertFalse(m.isBlocked("notdoubleclick.net"))
+        assertFalse(m.isBlocked("doubleclick.net.evil.com"))
+    }
+
+    @Test fun precedenceUserThenListExceptions() {
+        val m = matcher(
+            block = listOf("example.com", "tracker.io"),
+            allow = listOf("cdn.example.com"),
+            userAllow = setOf("tracker.io"),
+            userBlock = setOf("cdn.example.com"),
+        )
+        assertFalse("list exception beats list block", matcher(listOf("example.com"), listOf("cdn.example.com")).isBlocked("x.cdn.example.com"))
+        assertTrue("user block beats list exception", m.isBlocked("cdn.example.com"))
+        assertFalse("user allow beats list block", m.isBlocked("a.tracker.io"))
+        assertEquals("tracker.io" to true, m.userRuleFor("a.tracker.io"))
+    }
+
+    @Test fun compileDedupesAndRoundTripsThroughDisk() {
+        val text = """
+            0.0.0.0 a.com
+            0.0.0.0 a.com
+            ||b.com^
+            @@||ok.b.com^
+        """.trimIndent()
+        val lists = CompiledLists.build(sequenceOf(text.reader().buffered()))
+        assertEquals(2, lists.block.size)
+        assertEquals(1, lists.allow.size)
+
+        val f = File.createTempFile("wallupus", ".bin")
+        try {
+            lists.writeTo(f)
+            val back = CompiledLists.readOrEmpty(f)
+            assertTrue(back.block.contentEquals(lists.block))
+            assertTrue(back.allow.contentEquals(lists.allow))
+
+            f.writeBytes(byteArrayOf(1, 2, 3)) // corrupt → empty, never a crash
+            assertEquals(0, CompiledLists.readOrEmpty(f).block.size)
+        } finally {
+            f.delete()
+        }
+    }
+}
