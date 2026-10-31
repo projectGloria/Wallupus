@@ -75,10 +75,14 @@ fun SettingsScreen() {
         busy = id
         error = null
         scope.launch {
-            val ms = withContext(Dispatchers.IO) { WallupusApp.doh.probe(upstreams) }
-            latency[id] = ms
-            if (ms != null) apply() else error = "Couldn't get an answer from $name, so nothing changed."
-            busy = null
+            // finally: if apply() ever throws, the screen must not stay stuck on "testing".
+            try {
+                val ms = withContext(Dispatchers.IO) { WallupusApp.doh.probe(upstreams) }
+                latency[id] = ms
+                if (ms != null) apply() else error = "Couldn't get an answer from $name, so nothing changed."
+            } finally {
+                busy = null
+            }
         }
     }
 

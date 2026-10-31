@@ -1,6 +1,9 @@
 package dev.wallupus.dns
 
 import dev.wallupus.Upstream
+import dev.wallupus.WallupusApp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import okhttp3.Dns
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -72,7 +75,10 @@ class DohClient(upstreams: List<Upstream>, base: OkHttpClient) {
         route = route(upstreams)
         generation++ // single writer (the Settings screen, main thread): no need for an atomic
         // Idle keep-alive connections to the old resolver would otherwise linger for ~5 minutes.
-        client.connectionPool.evictAll()
+        // Off main: closing a pooled TLS socket writes close_notify, which is network I/O, and
+        // StrictMode turns that into NetworkOnMainThreadException (OkHttp's closeQuietly
+        // rethrows RuntimeExceptions). The probe that preceded every switch always leaves one.
+        WallupusApp.appScope.launch(Dispatchers.IO) { client.connectionPool.evictAll() }
     }
 
     /** Returns the raw DNS response, or null if every upstream failed. */
