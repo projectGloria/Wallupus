@@ -26,7 +26,7 @@ No lint/format task is configured beyond `kotlin.code.style=official`.
 .\gradlew.bat --write-verification-metadata sha256 assembleDebug test
 ```
 
-Commit the regenerated metadata with the dependency change. Keeping the dependency surface tiny is a deliberate goal: no DI framework, no serialization lib (uses Android's `org.json`), no analytics/crash reporting.
+Commit the regenerated metadata with the dependency change. CI builds on Linux, so platform-specific artifacts (`aapt2`) need their `-linux` entry too, and a Windows-only regeneration drops it: re-add it after regenerating. Keeping the dependency surface tiny is a deliberate goal: no DI framework, no serialization lib (uses Android's `org.json`), no analytics/crash reporting.
 
 ## Architecture
 
@@ -51,13 +51,15 @@ Commit the regenerated metadata with the dependency change. Keeping the dependen
 
 **UI** (`ui/`): Compose + Material3, always dark, with a fixed brand palette (`Palette` in `Theme.kt`: crimson on near-black, matching the she-wolf launcher icon; deliberately *not* Material You). Crimson means "active", so warnings and errors use `Ember` (orange) and "off" is neutral grey. System bars are forced to light icons. There's no icon library: `WolfGlyph` tints `res/drawable/ic_wolf_glyph.xml`, which shares its geometry with `ic_launcher_foreground.xml` and `ic_launcher_monochrome.xml`, so change all three together. There's no `Scaffold` either, so `MainActivity` provides `LocalContentColor` itself. Without it, untinted `Text` renders black. The Home toggle is `BlockButton`, driven by a derived `BlockState` (`running` from the service, plus `MainActivity.connecting` covering the consent and `establish()` gap). `connecting` is cleared on consent denial, on any `running` change, or after an 8 s timeout. Per-frame animation values are read only inside `drawBehind`/`graphicsLayer` lambdas, and infinite transitions live in composables that leave composition when they're not shown. Keep it that way so idle screens don't tick.
 
-**Config**: `assets/config.json` (upstreams + their bootstrap IPs, blocklist sources) is the "settings screen". It's edited in source and rebuilt, not exposed in the UI. `Config.load` enforces https-only upstreams and unique source ids.
+**Releases and updates**: every push to `main` triggers `.github/workflows/release.yml` (actions pinned by SHA; signing from repo secrets, never an unsigned publish). `versionCode` = `git rev-list --count HEAD`, `versionName` = `0.1.<count>`, tag = `v<versionName>`; `update/ReleaseTag.kt` parses the code back out of the tag, so keep the count as the last component. `AppUpdater` is manual only (nothing checks in the background), uses `FileProvider` + `ACTION_VIEW`, and relies on Android's same-signing-key rule for integrity. Debug builds are `dev.wallupus.debug` and hide the updater.
+
+**Config**: `assets/config.json` (upstreams + their bootstrap IPs, blocklist sources, the `updates` release URL) is the "settings screen". It's edited in source and rebuilt, not exposed in the UI. `Config.load` enforces https-only upstreams and update URL, and unique source ids.
 
 ## Privacy invariants (don't regress these)
 
 - `QueryLog` is a RAM-only ring buffer (1000 entries). Never persist query names. Only aggregate counters go to prefs, flushed about once a minute so a killed process doesn't lose them.
 - Backups and device-to-device transfer are disabled (`allowBackup=false` plus `data_extraction_rules.xml` excluding every domain).
-- No telemetry, no TLS interception, no server-side component. `dependenciesInfo` is excluded from the APK (F-Droid requirement).
+- No telemetry, no TLS interception, no server-side component. The app-update check only talks to GitHub when the user taps it. `dependenciesInfo` is excluded from the APK (F-Droid requirement).
 
 ## Tests
 

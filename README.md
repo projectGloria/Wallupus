@@ -57,6 +57,29 @@ keyPassword=...
 
 Then run `.\gradlew.bat assembleRelease`.
 
+Back the keystore up somewhere offline. Android only installs updates signed with the same key, so if you lose it, every phone has to uninstall (and lose its rules) to move to a new one.
+
+### Automatic releases (GitHub Actions)
+
+Every push to `main` runs `.github/workflows/release.yml`: tests, a signed release APK, and a GitHub Release tagged `v0.1.<commit count>`. The version is the commit count (`app/build.gradle.kts`), so it goes up by itself; the Home screen shows it under **App**.
+
+One-time setup, in PowerShell from the folder holding your keystore:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("wallupus.jks")) | gh secret set KEYSTORE_BASE64
+gh secret set KEYSTORE_PASSWORD   # prompts; nothing lands in your shell history
+gh secret set KEY_ALIAS
+gh secret set KEY_PASSWORD
+```
+
+Without these the workflow fails rather than publishing an unsigned APK. Anyone who controls the GitHub repo can read them back into a build, so use 2FA on the account.
+
+Debug builds install as **Wallupus Dev** (`dev.wallupus.debug`) next to the release, so local testing doesn't collide with the GitHub install. Only one VPN can run at a time.
+
+### Updating the app
+
+Home → **App** → **Check for update** asks the GitHub API for the latest release (nothing is checked in the background). **Install update** downloads the APK and opens Android's installer. The first time, Android asks you to allow Wallupus to install apps. Android refuses any APK not signed with your key, which is what keeps a tampered download out. Remove `updates` from `config.json` to drop the updater (F-Droid builds must).
+
 ## First run
 
 1. Open the app and flip the switch, then accept Android's VPN dialog. The first blocklist download starts automatically.
@@ -84,6 +107,8 @@ Edit `app/src/main/assets/config.json` and rebuild. It holds the upstreams with 
 | `filter/SourceCheck.kt` | Per-source check before a download replaces its cached copy (rejects error pages and >75% shrinks) |
 | `filter/RuleTargets.kt` | Rule-dialog choices, capped at the registrable domain via OkHttp's bundled Public Suffix List |
 | `filter/UpdateWorker.kt` | Weekly on Wi-Fi + battery OK; "Update now" on any network |
+| `update/AppUpdater.kt` | Manual app update: latest GitHub release → download (size-checked) → system installer |
+| `update/ReleaseTag.kt` | versionCode from a `v0.1.<count>` release tag |
 
 ## Known limits
 

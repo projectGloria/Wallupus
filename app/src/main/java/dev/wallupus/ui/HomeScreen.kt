@@ -48,6 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.wallupus.WallupusApp
 import dev.wallupus.filter.Filters
 import dev.wallupus.log.QueryLog
+import dev.wallupus.update.AppUpdater
 import dev.wallupus.vpn.WallupusVpnService
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.sample
@@ -125,6 +126,8 @@ fun HomeScreen(connecting: Boolean, onToggle: (Boolean) -> Unit, onUpdateNow: ()
         if (rules.isNotEmpty()) {
             item { RulesPanel(rules.sortedBy { it.first }) }
         }
+
+        item { AppPanel() }
     }
 }
 
@@ -215,32 +218,96 @@ private fun BlocklistPanel(status: Filters.Status, counts: Counts, onUpdateNow: 
                 style = MaterialTheme.typography.bodySmall,
                 color = Palette.TextLo,
             )
-            val tonal = MaterialTheme.colorScheme.primaryContainer
-            val onTonal = MaterialTheme.colorScheme.onPrimaryContainer
-            FilledTonalButton(
-                onClick = onUpdateNow,
-                enabled = !status.updating,
-                // Keep the button's colour while updating: a greyed-out pill with a spinner in
-                // it reads as "broken", not "busy".
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = tonal,
-                    contentColor = onTonal,
-                    disabledContainerColor = tonal.copy(alpha = 0.7f),
-                    disabledContentColor = onTonal,
-                ),
-                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
-            ) {
-                AnimatedContent(status.updating, label = "update") { updating ->
-                    if (updating) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(Modifier.size(14.dp), color = onTonal, strokeWidth = 2.dp)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Updating")
-                        }
-                    } else {
-                        Text("Update now")
-                    }
+            BusyButton("Update now", "Updating", busy = status.updating, onClick = onUpdateNow)
+        }
+    }
+}
+
+/**
+ * Version line plus manual update buttons. Nothing here touches the network until tapped; the
+ * state lives in [AppUpdater] (app scope), so a download survives leaving the screen.
+ */
+@Composable
+private fun AppPanel() {
+    val ctx = LocalContext.current
+    // Package info doesn't change while we're running (an update restarts the process).
+    val version = remember { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "?" }
+    val supported = remember { AppUpdater.supported(ctx) }
+    val state by AppUpdater.state.collectAsStateWithLifecycle()
+
+    Panel {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("APP", Modifier.weight(1f), style = Overline, color = Palette.TextLo)
+            Text("Version $version", style = MaterialTheme.typography.bodySmall.merge(Tabular), color = Palette.TextLo)
+        }
+        if (!supported) return@Panel
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val (line, color) = when (val s = state) {
+                AppUpdater.State.Idle, AppUpdater.State.Checking -> "" to Palette.TextLo
+                AppUpdater.State.UpToDate -> "You're on the latest version" to Palette.TextLo
+                is AppUpdater.State.Available -> "Version ${s.release.versionName} is available" to Palette.TextHi
+                is AppUpdater.State.Downloading -> "Downloading ${s.release.versionName}" to Palette.TextLo
+                is AppUpdater.State.Ready -> "Downloaded ${s.release.versionName}" to Palette.TextHi
+                is AppUpdater.State.Failed -> s.message to Palette.Ember
+            }
+            Text(line, Modifier.weight(1f).padding(end = 12.dp), style = MaterialTheme.typography.bodySmall, color = color)
+
+            // A known release (available, downloaded, or a failed install) gets "Install update";
+            // everything else checks again.
+            val release = when (val s = state) {
+                is AppUpdater.State.Available -> s.release
+                is AppUpdater.State.Downloading -> s.release
+                is AppUpdater.State.Ready -> s.release
+                is AppUpdater.State.Failed -> s.release
+                else -> null
+            }
+            if (release != null) {
+                BusyButton(
+                    "Install update",
+                    "Downloading",
+                    busy = state is AppUpdater.State.Downloading,
+                    onClick = { AppUpdater.install(release) },
+                )
+            } else {
+                BusyButton(
+                    "Check for update",
+                    "Checking",
+                    busy = state is AppUpdater.State.Checking,
+                    onClick = AppUpdater::check,
+                )
+            }
+        }
+    }
+}
+
+/** Tonal pill that swaps its label for a spinner while [busy], and ignores taps meanwhile. */
+@Composable
+private fun BusyButton(label: String, busyLabel: String, busy: Boolean, onClick: () -> Unit) {
+    val tonal = MaterialTheme.colorScheme.primaryContainer
+    val onTonal = MaterialTheme.colorScheme.onPrimaryContainer
+    FilledTonalButton(
+        onClick = onClick,
+        enabled = !busy,
+        // Keep the button's colour while busy: a greyed-out pill with a spinner in it reads as
+        // "broken", not "working".
+        colors = ButtonDefaults.filledTonalButtonColors(
+            containerColor = tonal,
+            contentColor = onTonal,
+            disabledContainerColor = tonal.copy(alpha = 0.7f),
+            disabledContentColor = onTonal,
+        ),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
+    ) {
+        AnimatedContent(busy, label = label) { working ->
+            if (working) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(14.dp), color = onTonal, strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(busyLabel)
                 }
+            } else {
+                Text(label)
             }
         }
     }

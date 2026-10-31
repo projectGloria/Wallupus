@@ -1,0 +1,84 @@
+# Every push to main: run the tests, build a signed release APK, publish it as a GitHub Release.
+# The app's "Check for update" button reads the latest release from the GitHub API.
+#
+# Needs four repository secrets (Settings → Secrets and variables → Actions):
+#   KEYSTORE_BASE64    the release keystore, base64-encoded
+#   KEYSTORE_PASSWORD  store password
+#   KEY_ALIAS          key alias inside the keystore
+#   KEY_PASSWORD       key password
+# Without them the job fails instead of publishing an unsigned or debug-signed APK.
+
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Releases must land in commit order: version = commit count, and "latest" must be the newest.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write # create tags + releases; nothing else
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Actions pinned to commit SHAs, matching the repo's locked-down supply chain: a moved
+      # tag can't swap in different code. Bump deliberately.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # full history: versionCode = git rev-list --count HEAD
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+
+      - name: Write signing config
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Signing secrets missing; refusing to publish an unsigned release."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          # keystore.properties is what app/build.gradle.kts already reads for local release builds.
+          cat > keystore.properties <<EOF
+          storeFile=$RUNNER_TEMP/release.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      - name: Test and build
+        run: ./gradlew --no-daemon test assembleRelease
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          meta=app/build/outputs/apk/release/output-metadata.json
+          name=$(jq -r '.elements[0].versionName' "$meta")
+          apk=app/build/outputs/apk/release/$(jq -r '.elements[0].outputFile' "$meta")
+          case "$apk" in *unsigned*) echo "::error::APK is unsigned"; exit 1 ;; esac
+          cp "$apk" "wallupus-$name.apk"
+          # The tag's last component is the versionCode; the app compares it to its own.
+          gh release create "v$name" "wallupus-$name.apk" \
+            --target "$GITHUB_SHA" \
+            --title "Wallupus $name" \
+            --notes "$(git log -1 --format=%B "$GITHUB_SHA")"
+
+      - name: Remove signing material
+        if: always()
+        run: rm -f keystore.properties "$RUNNER_TEMP/release.jks"

@@ -14,6 +14,14 @@ val keystoreProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
+// Every commit on main is a release (see .github/workflows/release.yml), so the version is the
+// commit count: it only ever grows, needs no manual bumping, and a local build of a commit gets
+// the same number CI gave it. CI must check out full history (fetch-depth: 0) or this reads 1.
+val commitCount: Int = runCatching {
+    providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
+        .standardOutput.asText.get().trim().toInt()
+}.getOrDefault(1)
+
 android {
     namespace = "dev.wallupus"
     compileSdk = 35
@@ -22,8 +30,10 @@ android {
         applicationId = "dev.wallupus"
         minSdk = 29 // Android 10: gives us LinkProperties.isPrivateDnsActive + VpnService.setMetered
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = commitCount
+        // The in-app updater reads the code back out of the release tag (v0.1.<count>):
+        // keep the count as the last component. See update/AppUpdater.kt.
+        versionName = "0.1.$commitCount"
     }
 
     signingConfigs {
@@ -38,6 +48,12 @@ android {
     }
 
     buildTypes {
+        // A separate app id lets a local debug build sit next to the release from GitHub instead
+        // of colliding with it (different signing keys can never update each other).
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

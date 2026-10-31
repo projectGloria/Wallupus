@@ -8,8 +8,11 @@ data class Upstream(val url: String, val bootstrap: List<String>)
 
 data class Source(val id: String, val name: String, val url: String, val enabled: Boolean)
 
-/** assets/config.json — the app's whole "settings screen", edited in your editor, not in the UI. */
-class Config(val upstreams: List<Upstream>, val sources: List<Source>) {
+/**
+ * assets/config.json — the app's whole "settings screen", edited in your editor, not in the UI.
+ * [updates] = GitHub "latest release" API URL for the manual updater; null hides the updater.
+ */
+class Config(val upstreams: List<Upstream>, val sources: List<Source>, val updates: String?) {
     companion object {
         fun load(ctx: Context): Config {
             // Uses Android's bundled org.json: no serialization library just to read 30 lines.
@@ -23,7 +26,9 @@ class Config(val upstreams: List<Upstream>, val sources: List<Source>) {
             require(upstreams.isNotEmpty()) { "config.json: at least one upstream is required" }
             require(upstreams.all { it.url.startsWith("https://") }) { "config.json: upstreams must be https://" }
             require(sources.map { it.id }.toSet().size == sources.size) { "config.json: duplicate source id" }
-            return Config(upstreams, sources)
+            val updates = root.optString("updates").takeIf { it.isNotEmpty() }
+            require(updates == null || updates.startsWith("https://")) { "config.json: updates must be https://" }
+            return Config(upstreams, sources, updates)
         }
 
         private fun JSONArray.objects() = (0 until length()).map { getJSONObject(it) }

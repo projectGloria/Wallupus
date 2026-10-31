@@ -1,5 +1,6 @@
 {
   "_comment": "Edit and rebuild. Upstreams are tried in order. Bootstrap IPs let the app reach DoH without asking any plain-text resolver first.",
+  "updates": "https://api.github.com/repos/projectGloria/Wallupus/releases/latest",
   "upstreams": [
     {
       "url": "https://dns.quad9.net/dns-query",

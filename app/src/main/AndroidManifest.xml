@@ -7,6 +7,10 @@
     <!-- Private-DNS detection on the Home screen, and WorkManager's "unmetered" constraint. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- "Install update" hands a downloaded release APK to the system installer. Android still
+         asks you to confirm each install, and refuses any APK not signed with this app's key. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- WorkManager's manifest merges this in for foreground workers. We never run one,
          so strip it: the final APK should only claim what it actually uses.
          (WorkManager also merges RECEIVE_BOOT_COMPLETED + WAKE_LOCK; those we keep,
@@ -38,6 +42,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Shares only cache/updates/ with the system installer, one read grant per install. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
 
         <!-- BIND_VPN_SERVICE means only the system can bind/start it. The system binds VPN
              services with foreground priority, so we don't need startForeground() — and thus
