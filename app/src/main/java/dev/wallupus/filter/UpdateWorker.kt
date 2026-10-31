@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * WorkManager rather than AlarmManager/coroutines: it survives process death and reboots, and
- * honours Doze — the OS batches our weekly download with other work instead of waking the radio.
+ * honours Doze — the OS batches our daily download with other work instead of waking the radio.
  */
 class UpdateWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
 
@@ -44,8 +44,12 @@ class UpdateWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
                         .build(),
                 )
                 .build()
-            // KEEP: re-scheduling on every app start must not reset the clock.
-            WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.KEEP, req)
+            // UPDATE, not KEEP: KEEP ignores the new request entirely, so installs that registered
+            // the old 7-day job would stay weekly forever. UPDATE swaps in this request's period
+            // and constraints but keeps the original enqueue time, so re-scheduling on every app
+            // start still doesn't reset the clock. (Name kept as-is: renaming would orphan the
+            // job already registered on existing installs.)
+            WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.UPDATE, req)
         }
 
         /** "Update now" — any network, user asked for it explicitly. */

@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Wordmark on the left, Home/Log segmented control on the right. */
+/** Wordmark on the left, Home/Log/Settings segmented control on the right. */
 @Composable
 fun TopBar(tab: Int, onTab: (Int) -> Unit) {
     Row(
@@ -42,14 +42,17 @@ fun TopBar(tab: Int, onTab: (Int) -> Unit) {
         Text(
             "Wallupus",
             Modifier.weight(1f),
+            maxLines = 1,
+            softWrap = false, // on the narrowest phones the wordmark clips, never the tabs
             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.4.sp),
             color = Palette.TextHi,
         )
-        Segmented(listOf("Home", "Log"), tab, onTab)
+        Segmented(listOf("Home", "Log", "Settings"), tab, onTab)
     }
 }
 
-private val SEGMENT_W = 68.dp
+// Three segments must fit beside the wordmark on a 360 dp phone.
+private val SEGMENT_W = 62.dp
 private val SEGMENT_H = 34.dp
 
 /** Pill with a thumb that springs between options. */

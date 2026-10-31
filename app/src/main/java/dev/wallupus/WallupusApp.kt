@@ -2,6 +2,7 @@ package dev.wallupus
 
 import android.app.Application
 import dev.wallupus.dns.DohClient
+import dev.wallupus.dns.Resolvers
 import dev.wallupus.filter.Filters
 import dev.wallupus.filter.UpdateWorker
 import kotlinx.coroutines.CoroutineScope
@@ -36,6 +37,6 @@ class WallupusApp : Application() {
         /** One OkHttp instance = one connection pool + dispatcher; specialised via newBuilder(). */
         val http: OkHttpClient by lazy { OkHttpClient() }
 
-        val doh: DohClient by lazy { DohClient(config.upstreams, http) }
+        val doh: DohClient by lazy { DohClient(Resolvers.activeUpstreams(), http) }
     }
 }

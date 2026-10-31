@@ -11,10 +11,17 @@
          asks you to confirm each install, and refuses any APK not signed with this app's key. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- The Log names the app behind each lookup: the kernel gives us its UID, and on 11+
+         package visibility hides every other app's name/icon without this. Read on-device
+         only, nothing about your installed apps leaves the phone. Play allows it for VPNs. -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
     <!-- WorkManager's manifest merges this in for foreground workers. We never run one,
          so strip it: the final APK should only claim what it actually uses.
          (WorkManager also merges RECEIVE_BOOT_COMPLETED + WAKE_LOCK; those we keep,
-         they're how the weekly update job survives reboots.) -->
+         they're how the daily update job survives reboots.) -->
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE"
         tools:node="remove" />

@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit
  */
 object BlocklistUpdater {
     private const val MAX_SOURCE_BYTES = 64L shl 20 // 64 MB: biggest real lists are ~20 MB
-    private val mutex = Mutex() // weekly job + "Update now" must not compile concurrently
+    private val mutex = Mutex() // periodic job + "Update now" must not compile concurrently
 
     private val http by lazy {
         WallupusApp.http.newBuilder()

@@ -3,6 +3,7 @@ package dev.wallupus.vpn
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import android.util.Log
@@ -81,7 +82,7 @@ class WallupusVpnService : VpnService() {
             return
         }
         tun = pfd
-        loop = PacketLoop(pfd, WallupusApp.doh).also { it.start() }
+        loop = PacketLoop(pfd, WallupusApp.doh, getSystemService(ConnectivityManager::class.java)).also { it.start() }
         flusher = WallupusApp.appScope.launch {
             while (true) {
                 delay(LIFETIME_FLUSH_MS)

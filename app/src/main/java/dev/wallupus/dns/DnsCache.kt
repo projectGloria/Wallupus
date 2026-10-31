@@ -47,4 +47,8 @@ class DnsCache(
         val ttl = DnsMessage.cacheTtlSeconds(response) ?: return
         map[key(q)] = Entry(response, clock() + ttl * 1_000_000_000L)
     }
+
+    /** After a resolver switch: answers from the old one (e.g. unfiltered) mustn't outlive it. */
+    @Synchronized
+    fun clear() = map.clear()
 }

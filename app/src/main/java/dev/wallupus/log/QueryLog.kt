@@ -7,15 +7,15 @@ import kotlinx.coroutines.flow.update
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * In-memory ring buffer of recent queries. Deliberately never written to disk: a browsing
- * history of every domain your phone touched is exactly the data this app exists to protect.
- * Process dies → log is gone.
+ * In-memory log of recent queries, grouped per name (see [QueryGroups]). Deliberately never
+ * written to disk: a browsing history of every domain your phone touched, now with which app
+ * asked, is exactly the data this app exists to protect. Process dies → log is gone.
  */
 object QueryLog {
-    data class Entry(val timeMillis: Long, val name: String, val qtype: Int, val blocked: Boolean)
-
+    // Groups, not raw queries: 1000 distinct names covers hours of use, where 1000 raw entries
+    // used to be a few minutes of the same CDN names repeating.
     private const val CAPACITY = 1000
-    private val buffer = ArrayDeque<Entry>(CAPACITY)
+    private val groups = QueryGroups(CAPACITY)
 
     val sessionBlocked = AtomicLong()
     val sessionTotal = AtomicLong()
@@ -50,21 +50,19 @@ object QueryLog {
     private val _version = MutableStateFlow(0L)
     val version: StateFlow<Long> = _version.asStateFlow()
 
-    fun record(name: String, qtype: Int, blocked: Boolean) {
-        synchronized(buffer) {
-            if (buffer.size == CAPACITY) buffer.removeFirst()
-            buffer.addLast(Entry(System.currentTimeMillis(), name, qtype, blocked))
-        }
+    /** [uid] = the asking app (Process.INVALID_UID if the kernel couldn't tell). */
+    fun record(name: String, qtype: Int, blocked: Boolean, uid: Int) {
+        groups.record(name, qtype, blocked, uid)
         sessionTotal.incrementAndGet()
         if (blocked) sessionBlocked.incrementAndGet()
         _version.update { it + 1 }
     }
 
-    /** Newest first. */
-    fun snapshot(): List<Entry> = synchronized(buffer) { buffer.reversed() }
+    /** Most recently seen first. */
+    fun snapshot(): List<QueryGroups.Entry> = groups.snapshot()
 
     fun clear() {
-        synchronized(buffer) { buffer.clear() }
+        groups.clear()
         _version.update { it + 1 }
     }
 

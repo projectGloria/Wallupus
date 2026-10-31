@@ -1,14 +1,115 @@
 {
-  "_comment": "Edit and rebuild. Upstreams are tried in order. Bootstrap IPs let the app reach DoH without asking any plain-text resolver first.",
+  "_comment": "Edit and rebuild. Resolvers are the choices on the Settings screen; defaultResolver is used until you pick one. Bootstrap IPs let the app reach DoH without asking any plain-text resolver first.",
   "updates": "https://api.github.com/repos/projectGloria/Wallupus/releases/latest",
-  "upstreams": [
+  "defaultResolver": "quad9",
+  "resolvers": [
     {
-      "url": "https://dns.quad9.net/dns-query",
-      "bootstrap": ["9.9.9.9", "149.112.112.112", "2620:fe::fe"]
+      "id": "quad9",
+      "name": "Quad9",
+      "note": "Swiss non-profit. Blocks malware domains, validates DNSSEC, logs no IPs.",
+      "upstreams": [
+        {
+          "url": "https://dns.quad9.net/dns-query",
+          "bootstrap": [
+            "9.9.9.9",
+            "149.112.112.112",
+            "2620:fe::fe",
+            "2620:fe::9"
+          ]
+        }
+      ]
     },
     {
-      "url": "https://cloudflare-dns.com/dns-query",
-      "bootstrap": ["1.1.1.1", "1.0.0.1", "2606:4700:4700::1111"]
+      "id": "cloudflare",
+      "name": "Cloudflare",
+      "note": "Fastest anycast network. No filtering; independently audited, IP logs deleted within 25 h.",
+      "upstreams": [
+        {
+          "url": "https://cloudflare-dns.com/dns-query",
+          "bootstrap": [
+            "1.1.1.1",
+            "1.0.0.1",
+            "2606:4700:4700::1111",
+            "2606:4700:4700::1001"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cloudflare-security",
+      "name": "Cloudflare Security",
+      "note": "Cloudflare plus malware and phishing blocking.",
+      "upstreams": [
+        {
+          "url": "https://security.cloudflare-dns.com/dns-query",
+          "bootstrap": [
+            "1.1.1.2",
+            "1.0.0.2",
+            "2606:4700:4700::1112",
+            "2606:4700:4700::1002"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mullvad",
+      "name": "Mullvad",
+      "note": "Swedish VPN provider. No filtering, no query logging.",
+      "upstreams": [
+        {
+          "url": "https://dns.mullvad.net/dns-query",
+          "bootstrap": [
+            "194.242.2.2",
+            "2a07:e340::2"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mullvad-base",
+      "name": "Mullvad Base",
+      "note": "Mullvad plus its own ad, tracker and malware blocking.",
+      "upstreams": [
+        {
+          "url": "https://base.dns.mullvad.net/dns-query",
+          "bootstrap": [
+            "194.242.2.4",
+            "2a07:e340::4"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "adguard",
+      "name": "AdGuard DNS",
+      "note": "Blocks ads and trackers on its side as well.",
+      "upstreams": [
+        {
+          "url": "https://dns.adguard-dns.com/dns-query",
+          "bootstrap": [
+            "94.140.14.14",
+            "94.140.15.15",
+            "2a10:50c0::ad1:ff",
+            "2a10:50c0::ad2:ff"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "google",
+      "name": "Google Public DNS",
+      "note": "Very reliable, no filtering. Keeps temporary IP logs for 24–48 h.",
+      "upstreams": [
+        {
+          "url": "https://dns.google/dns-query",
+          "bootstrap": [
+            "8.8.8.8",
+            "8.8.4.4",
+            "2001:4860:4860::8888",
+            "2001:4860:4860::8844"
+          ]
+        }
+      ]
     }
   ],
   "sources": [

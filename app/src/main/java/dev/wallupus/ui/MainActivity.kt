@@ -89,7 +89,8 @@ class MainActivity : ComponentActivity() {
                         TopBar(tab, onTab = { tab = it })
                         when (tab) {
                             0 -> HomeScreen(connecting, onToggle = ::toggle, onUpdateNow = { UpdateWorker.runNow(this@MainActivity) })
-                            else -> LogScreen()
+                            1 -> LogScreen()
+                            else -> SettingsScreen()
                         }
                     }
                 }

@@ -28,6 +28,21 @@ class Prefs(ctx: Context) {
         get() = sp.getString(K_LAST_ERROR, null)
         set(v) = sp.edit { putString(K_LAST_ERROR, v) }
 
+    /** Settings → DNS: a preset id from config.json, or [Config.CUSTOM_RESOLVER]. null = config default. */
+    var resolverId: String?
+        get() = sp.getString(K_RESOLVER, null)
+        set(v) = sp.edit { putString(K_RESOLVER, v) }
+
+    /** The last custom DoH endpoint that passed its test; kept even while a preset is active. */
+    var customUpstream: Upstream?
+        get() = sp.getString(K_CUSTOM_URL, null)?.let { url ->
+            Upstream(url, sp.getString(K_CUSTOM_BOOT, "")!!.split(',').filter { it.isNotEmpty() })
+        }
+        set(v) = sp.edit {
+            putString(K_CUSTOM_URL, v?.url)
+            putString(K_CUSTOM_BOOT, v?.bootstrap?.joinToString(","))
+        }
+
     val lifetimeBlocked: Long get() = sp.getLong(K_LIFE_BLOCKED, 0L)
     val lifetimeTotal: Long get() = sp.getLong(K_LIFE_TOTAL, 0L)
 
@@ -56,5 +71,8 @@ class Prefs(ctx: Context) {
         const val K_LAST_ERROR = "last_error"
         const val K_LIFE_BLOCKED = "life_blocked"
         const val K_LIFE_TOTAL = "life_total"
+        const val K_RESOLVER = "resolver"
+        const val K_CUSTOM_URL = "custom_doh_url"
+        const val K_CUSTOM_BOOT = "custom_doh_bootstrap"
     }
 }

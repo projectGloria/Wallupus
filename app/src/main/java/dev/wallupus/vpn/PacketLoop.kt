@@ -1,6 +1,8 @@
 package dev.wallupus.vpn
 
+import android.net.ConnectivityManager
 import android.os.ParcelFileDescriptor
+import android.os.Process
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
@@ -23,6 +25,8 @@ import kotlinx.coroutines.launch
 import java.io.FileDescriptor
 import java.io.FileOutputStream
 import java.io.IOException
+import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.util.concurrent.Semaphore
 
 /**
@@ -33,7 +37,11 @@ import java.util.concurrent.Semaphore
  * single synchronized writer. The reader never blocks on the network, so a slow upstream can't
  * stall blocked-domain answers.
  */
-class PacketLoop(tun: ParcelFileDescriptor, private val doh: DohClient) {
+class PacketLoop(
+    tun: ParcelFileDescriptor,
+    private val doh: DohClient,
+    private val connectivity: ConnectivityManager,
+) {
     private val tunFd: FileDescriptor = tun.fileDescriptor
     private val output = FileOutputStream(tunFd)
 
@@ -55,6 +63,7 @@ class PacketLoop(tun: ParcelFileDescriptor, private val doh: DohClient) {
     // queueing. Bounds memory when the network is dead and every app is retrying in a loop.
     private val inflight = Semaphore(MAX_INFLIGHT)
     private val cache = DnsCache()
+    private var cacheGeneration = doh.generation // reader thread only
     private val thread = Thread(::run, "wallupus-tun")
 
     fun start() = thread.start()
@@ -127,10 +136,18 @@ class PacketLoop(tun: ParcelFileDescriptor, private val doh: DohClient) {
         if (udp.dstPort != 53) return
         val q = DnsMessage.parseQuery(udp.payload) ?: return
 
+        // Resolver switched in Settings: cached answers came from the old one. Checked here
+        // rather than cleared from the UI thread so the cache keeps a single owner.
+        val gen = doh.generation
+        if (gen != cacheGeneration) {
+            cache.clear()
+            cacheGeneration = gen
+        }
+
         // Matcher before cache: a domain blocked by a fresh list update is blocked immediately,
         // even if an older allowed answer is still cached.
         val blocked = Filters.matcher.get().isBlocked(q.name)
-        QueryLog.record(q.name, q.qtype, blocked)
+        QueryLog.record(q.name, q.qtype, blocked, ownerUid(udp))
         if (blocked) {
             reply(udp, DnsMessage.blockedResponse(udp.payload, q))
             return
@@ -160,6 +177,25 @@ class PacketLoop(tun: ParcelFileDescriptor, private val doh: DohClient) {
                 inflight.release()
             }
         }
+    }
+
+    /**
+     * Which app sent this query (Android 10+, active VPN app only). It has to run *before* we
+     * reply: the asking socket is still open and waiting, so the kernel can still find its owner
+     * by 4-tuple. Apps resolving through libc go via netd, which chowns its socket to the asking
+     * app, so this is the app's UID rather than the resolver's. One binder call (sub-ms) on the
+     * reader thread; DNS rates are tens per second, well inside budget.
+     */
+    private fun ownerUid(p: UdpPacket): Int = try {
+        connectivity.getConnectionOwnerUid(
+            OsConstants.IPPROTO_UDP,
+            InetSocketAddress(InetAddress.getByAddress(p.srcAddr), p.srcPort),
+            InetSocketAddress(InetAddress.getByAddress(p.dstAddr), p.dstPort),
+        )
+    } catch (_: Exception) {
+        // SecurityException if another VPN took over mid-flight; UnknownHostException can't
+        // happen for raw 4/16-byte addresses. Neither is worth dropping the query over.
+        Process.INVALID_UID
     }
 
     private fun reply(req: UdpPacket, dnsPayload: ByteArray) {

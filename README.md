@@ -3,9 +3,9 @@
 A DNS-only ad and tracker blocker for Android 10+. About 1,900 lines of Kotlin, roughly a third of it comments, that you can read in an evening.
 
 - **Captures DNS and nothing else.** The local VPN routes only two fake resolver addresses into the app. All other traffic never touches it.
-- **Encrypted upstream.** Allowed lookups go to Quad9 over DNS-over-HTTPS, with Cloudflare as fallback. Pinned bootstrap IPs mean your ISP never sees even the resolver's name.
+- **Encrypted upstream, your pick.** Allowed lookups go over DNS-over-HTTPS to the resolver chosen under **Settings**: Quad9 (default), Cloudflare, Cloudflare Security, Mullvad, Mullvad Base, AdGuard, Google, or any DoH URL of your own. Pinned bootstrap IPs mean your ISP never sees even the resolver's name. A resolver is only switched to after a live test query succeeds.
 - **Lists compiled on the phone.** No server of ours, no telemetry, no crash reporter, no TLS interception.
-- **Nothing leaves the device.** Backups and device-to-device transfer are disabled for every data domain. The query log lives in RAM only.
+- **Nothing leaves the device.** Backups and device-to-device transfer are disabled for every data domain. The query log lives in RAM only. It groups repeats into one row with a count, and names the app that asked.
 
 ## Build on Windows (CLI, no Android Studio)
 
@@ -88,7 +88,11 @@ Home → **App** → **Check for update** asks the GitHub API for the latest rel
 
 ## Configure
 
-Edit `app/src/main/assets/config.json` and rebuild. It holds the upstreams with their bootstrap IPs, and the blocklist sources. Per-domain allow and block rules are set in the app: tap any entry in the Log tab.
+In the app: pick the DNS resolver under **Settings** (switching applies on the next lookup, no reconnect), and set per-domain allow and block rules by tapping any entry in the **Log** tab.
+
+In source: `app/src/main/assets/config.json` holds the resolver presets with their bootstrap IPs, the default resolver, and the blocklist sources. Edit and rebuild.
+
+To show which app made each lookup, Wallupus asks the kernel for the owning UID (`ConnectivityManager.getConnectionOwnerUid`, available to the active VPN on Android 10+), and needs `QUERY_ALL_PACKAGES` to turn that UID into a name and icon on Android 11+. That data stays on the phone, in RAM.
 
 ## How it works
 
@@ -98,7 +102,9 @@ Edit `app/src/main/assets/config.json` and rebuild. It holds the upstreams with 
 | `vpn/PacketLoop.kt` | `poll()` loop over the tun fd; block → instant NXDOMAIN, TCP → RST, else cache → DoH |
 | `net/IpPacket.kt` | Strict IPv4/IPv6/UDP parser, reply builder, and TCP RST synthesizer with checksums |
 | `dns/DnsMessage.kt` | Question parsing (rejects compression pointers), NXDOMAIN/SERVFAIL, TTL reading |
-| `dns/DohClient.kt` | RFC 8484 POST via OkHttp, bootstrap IPs, sticky failover |
+| `dns/DohClient.kt` | RFC 8484 POST via OkHttp, bootstrap IPs, sticky failover, live upstream swap, latency probe |
+| `dns/Resolvers.kt` | The active resolver choice (preset or custom), persisted and pushed into the DoH client |
+| `dns/CustomUpstream.kt` | Custom DoH URL / bootstrap-IP validation and the test query |
 | `dns/DnsCache.kt` | 512-entry TTL-respecting LRU |
 | `filter/ListParser.kt` | hosts / plain domains / `\|\|domain^` + `@@` exceptions; everything else skipped |
 | `filter/DomainMatcher.kt` | Sorted 64-bit hash arrays + zero-alloc suffix walk; user rules beat lists |
@@ -107,6 +113,8 @@ Edit `app/src/main/assets/config.json` and rebuild. It holds the upstreams with 
 | `filter/SourceCheck.kt` | Per-source check before a download replaces its cached copy (rejects error pages and >75% shrinks) |
 | `filter/RuleTargets.kt` | Rule-dialog choices, capped at the registrable domain via OkHttp's bundled Public Suffix List |
 | `filter/UpdateWorker.kt` | Daily on Wi-Fi + battery OK (plus on VPN start when stale); "Update now" on any network |
+| `log/QueryGroups.kt` | RAM-only log grouped by (name, outcome): count, first/last seen, query types, asking apps |
+| `ui/AppLabels.kt` | UID → app name + icon, cached in memory |
 | `update/AppUpdater.kt` | Manual app update: latest GitHub release → download (size-checked) → system installer |
 | `update/ReleaseTag.kt` | versionCode from a `v0.1.<count>` release tag |
 
@@ -115,6 +123,7 @@ Edit `app/src/main/assets/config.json` and rebuild. It holds the upstreams with 
 These are inherent to DNS blocking:
 
 - **Same-domain ads** aren't blocked: YouTube, Instagram and Reddit promoted posts.
-- **Hardcoded DoH by IP** isn't blocked. `doh-bypass.txt` only blocks hostname-based DoH.
+- **Hardcoded DoH by IP** is only caught for the big public resolvers whose IPs are trapped in `WallupusVpnService`. `doh-bypass.txt` covers hostname-based DoH.
+- **Log counts are lookups that reached Wallupus**, not requests an app made. Android caches answers itself, so a repeat inside the TTL never shows up. An app's name is missing ("Unknown app") if its socket closed before the kernel lookup.
 - **Android's single VPN slot.** Wallupus can't run alongside another VPN.
 - **The app's own lookups** for list hosts like raw.githubusercontent.com go through the network's normal resolver. Those names are public and identical for every user.
