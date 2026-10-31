@@ -100,7 +100,7 @@ fun BlockButton(
     // One transition for every state-dependent property, so they all retarget together when the
     // state flips mid-animation (e.g. tap on, consent denied half a second later).
     val transition = updateTransition(state, label = "block")
-    // 0 = idle graphite, 1 = lit mint. The disc's gradient is a lerp on this single number.
+    // 0 = idle graphite, 1 = lit crimson. The disc's gradient is a lerp on this single number.
     val energy by transition.animateFloat({ tween(550, easing = FastOutSlowInEasing) }, label = "energy") {
         when (it) {
             BlockState.Off -> 0f
@@ -132,7 +132,7 @@ fun BlockButton(
     }
 
     Box(modifier.size(OUTER), contentAlignment = Alignment.Center) {
-        // Static layer: mint aura (On) and the dim dial. No clock here, so Off costs nothing.
+        // Static layer: crimson aura (On) and the dim dial. No clock here, so Off costs nothing.
         Spacer(
             Modifier.size(OUTER).drawBehind {
                 val g = glow * 0.9f + pulse.value * 0.4f

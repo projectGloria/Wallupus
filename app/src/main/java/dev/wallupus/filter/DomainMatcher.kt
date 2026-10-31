@@ -23,8 +23,10 @@ class DomainMatcher(
         val starts = suffixStarts(name)
         if (starts.isEmpty()) return false
 
-        if (starts.any { name.substring(it) in userAllow }) return false
-        if (starts.any { name.substring(it) in userBlock }) return true
+        // isNotEmpty first: most installs have no user rules, and this runs on every query.
+        // Without the guard each suffix is substring()-ed twice for nothing.
+        if (userAllow.isNotEmpty() && starts.any { name.substring(it) in userAllow }) return false
+        if (userBlock.isNotEmpty() && starts.any { name.substring(it) in userBlock }) return true
 
         if (listBlock.isEmpty()) return false
         val hashes = LongArray(starts.size) { DomainHash.of(name, starts[it]) }

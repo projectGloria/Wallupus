@@ -73,7 +73,7 @@ class MainActivity : ComponentActivity() {
                     Modifier
                         .fillMaxSize()
                         .background(Palette.Ink)
-                        // Soft light pooled behind the button: graphite when idle, mint while
+                        // Soft light pooled behind the button: graphite when idle, crimson while
                         // blocking. Read in draw, so the 900 ms fade never recomposes the screen.
                         .drawBehind {
                             val c = Offset(size.width / 2, size.height * 0.34f)
