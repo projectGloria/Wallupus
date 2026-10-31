@@ -19,7 +19,7 @@ class QueryGroupsTest {
         assertEquals(1_000L, e.firstMillis)
         assertEquals(3_000L, e.lastMillis)
         assertEquals(listOf(1, 28), e.qtypes)
-        assertEquals(listOf(10_100), e.uids)
+        assertEquals(10_100, e.uid)
     }
 
     @Test fun blockedAndAllowedAreSeparateRows() {
@@ -30,15 +30,21 @@ class QueryGroupsTest {
         assertEquals(2, g.snapshot().map { it.key }.toSet().size)
     }
 
-    @Test fun mostRecentlySeenFirstAndAskersLatestFirst() {
+    @Test fun eachAppCountsItsOwnLookups() {
+        val g = groups()
+        g.record("cdn.com", 1, false, 1)
+        g.record("cdn.com", 1, false, 2)
+        g.record("cdn.com", 1, false, 1)
+        val byUid = g.snapshot().associate { it.uid to it.count }
+        assertEquals(mapOf(1 to 2, 2 to 1), byUid)
+    }
+
+    @Test fun mostRecentlySeenFirst() {
         val g = groups()
         g.record("a.com", 1, false, 1)
-        g.record("b.com", 1, false, 2)
-        g.record("a.com", 1, false, 3)
+        g.record("b.com", 1, false, 1)
         g.record("a.com", 1, false, 1)
-        val snap = g.snapshot()
-        assertEquals(listOf("a.com", "b.com"), snap.map { it.name })
-        assertEquals(listOf(1, 3), snap.first().uids)
+        assertEquals(listOf("a.com", "b.com"), g.snapshot().map { it.name })
     }
 
     @Test fun evictsTheStalestGroupWhenFull() {
@@ -48,13 +54,5 @@ class QueryGroupsTest {
         g.record("old.com", 1, false, 1) // touched: now kept.com is the stalest
         g.record("new.com", 1, false, 1)
         assertEquals(listOf("new.com", "old.com"), g.snapshot().map { it.name })
-    }
-
-    @Test fun askerListIsCapped() {
-        val g = groups()
-        repeat(20) { g.record("cdn.com", 1, false, it) }
-        val uids = g.snapshot().single().uids
-        assertEquals(6, uids.size)
-        assertEquals(19, uids.first())
     }
 }

@@ -1,6 +1,7 @@
 package dev.wallupus.ui
 
 import android.text.format.DateFormat
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -46,10 +47,16 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.wallupus.filter.Filters
 import dev.wallupus.filter.ruleTargets
+import dev.wallupus.log.AppGroup
 import dev.wallupus.log.QueryGroups
+import dev.wallupus.log.groupByApp
+import dev.wallupus.log.monogram
 import dev.wallupus.log.QueryLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -62,7 +69,7 @@ import java.util.Locale
 
 private enum class LogFilter(val label: String) { ALL("All"), BLOCKED("Blocked"), ALLOWED("Allowed") }
 
-@OptIn(FlowPreview::class)
+@OptIn(FlowPreview::class, ExperimentalFoundationApi::class) // stickyHeader
 @Composable
 fun LogScreen() {
     var filter by rememberSaveable { mutableStateOf(LogFilter.ALL) }
@@ -92,12 +99,15 @@ fun LogScreen() {
                 // App names come from the label cache: only apps already shown can match, which
                 // is every app on screen. Cheap enough at 1000 rows × 2 Hz to skip indexing.
                 needle.isEmpty() || needle in e.name ||
-                    e.uids.any { AppLabels.peek(it)?.name?.lowercase()?.contains(needle) == true }
+                    AppLabels.peek(e.uid)?.name?.lowercase()?.contains(needle) == true
             }
-            .let { s -> if (top) s.sortedByDescending { it.count } else s }
             .toList()
+            .let { groupByApp(it, byCount = top) }
     }
-    val totals = remember(shown) { shown.sumOf { it.count } }
+    val totals = remember(shown) { shown.sumOf { it.total } }
+    val names = remember(shown) { shown.sumOf { it.entries.size } }
+    // Collapsed app sections, by UID. Saveable as a list: survives rotation and tab switches.
+    var collapsed by rememberSaveable { mutableStateOf(listOf<Int>()) }
     val clock = rememberClockFormats()
 
     Column {
@@ -122,7 +132,7 @@ fun LogScreen() {
         )
         Row(Modifier.padding(horizontal = 16.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "%,d names · %,d lookups".format(shown.size, totals),
+                "%,d apps · %,d names · %,d lookups".format(shown.size, names, totals),
                 Modifier.weight(1f),
                 style = MaterialTheme.typography.bodySmall,
                 color = Palette.TextLo,
@@ -139,11 +149,22 @@ fun LogScreen() {
             )
         }
         LazyColumn {
-            // Rows are unique per (name, outcome) now, so they get stable keys: Compose moves a
-            // row instead of rebuilding it, and animateItem slides it to its new place.
-            items(shown, key = { it.key }) { e ->
-                LogRow(e, clock, Modifier.animateItem()) { selectedKey = e.key }
-                HorizontalDivider(color = Palette.Line)
+            // Stable keys per app header and per (app, name, outcome) row: Compose moves a row
+            // instead of rebuilding it, and animateItem slides it to its new place.
+            shown.forEach { group ->
+                val open = group.uid !in collapsed
+                // Sticky: while scrolling a chatty app's domains, you still see whose they are.
+                stickyHeader(key = "app:${group.uid}") {
+                    AppHeader(group, open, clock) {
+                        collapsed = if (open) collapsed + group.uid else collapsed - group.uid
+                    }
+                }
+                if (open) {
+                    items(group.entries, key = { it.key }) { e ->
+                        DomainRow(e, Modifier.animateItem()) { selectedKey = e.key }
+                    }
+                }
+                item(key = "end:${group.uid}") { HorizontalDivider(color = Palette.Line) }
             }
         }
     }
@@ -151,49 +172,98 @@ fun LogScreen() {
     selectedKey?.let { key ->
         val entry = entries.firstOrNull { it.key == key }
         // Cleared or evicted under us: close after this frame (never write state mid-composition).
-        if (entry == null) SideEffect { selectedKey = null }
-        else EntryDialog(entry, clock) { selectedKey = null }
+        if (entry == null) {
+            SideEffect { selectedKey = null }
+        } else {
+            // Every app that asked for this name (same outcome), busiest first. Derived from the
+            // snapshot, since rows are per app now.
+            val askers = entries.filter { it.name == entry.name && it.blocked == entry.blocked }.sortedByDescending { it.count }
+            EntryDialog(entry, askers, clock) { selectedKey = null }
+        }
     }
 }
 
+/** App section header: icon, name, and its blocked / total counts. Tap folds the section. */
 @Composable
-private fun LogRow(e: QueryGroups.Entry, clock: ClockFormats, modifier: Modifier, onClick: () -> Unit) {
-    val app = rememberAppLabel(e.uids.firstOrNull() ?: -1)
+private fun AppHeader(group: AppGroup, open: Boolean, clock: ClockFormats, onToggle: () -> Unit) {
+    val app = rememberAppLabel(group.uid)
     Row(
-        modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
+        Modifier
+            .fillMaxWidth()
+            // Opaque: a sticky header slides over the rows beneath it.
+            .background(Palette.Ink)
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AppIcon(app)
+        Column(Modifier.weight(1f).padding(start = 14.dp, end = 8.dp)) {
+            Text(
+                app?.name ?: "…",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                buildString {
+                    if (group.blocked > 0) append("%,d blocked · ".format(group.blocked))
+                    append("%,d lookups · ".format(group.total))
+                    append(clock.format(group.lastMillis))
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (group.blocked > 0) Palette.Crimson else Palette.TextLo,
+                maxLines = 1,
+            )
+        }
+        Text(if (open) "−" else "+", style = MaterialTheme.typography.titleMedium, color = Palette.TextLo)
+    }
+}
+
+/** One domain under its app: monogram, name, outcome dot, count. */
+@Composable
+private fun DomainRow(e: QueryGroups.Entry, modifier: Modifier, onClick: () -> Unit) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(start = 32.dp, end = 16.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box {
-            AppIcon(app)
-            // Outcome as a dot on the icon's corner: the icon answers "who", the dot "what happened".
+            DomainMonogram(e.name)
+            // Outcome as a dot on the disc's corner: the disc answers "which site", the dot "what happened".
             Box(
                 Modifier
                     .align(Alignment.BottomEnd)
                     .offset(x = 3.dp, y = 3.dp)
-                    .size(12.dp)
+                    .size(10.dp)
                     .border(2.dp, Palette.Ink, CircleShape)
                     .background(if (e.blocked) Palette.Crimson else Palette.Bone, CircleShape),
             )
         }
-        Column(Modifier.weight(1f).padding(start = 14.dp, end = 8.dp)) {
-            Text(
-                e.name,
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (e.blocked) Palette.TextHi else Palette.TextLo,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            val more = if (e.uids.size > 1) " +${e.uids.size - 1}" else ""
-            Text(
-                "${app?.name ?: "…"}$more · ${clock.format(e.lastMillis)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = Palette.TextLo,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (e.count > 1) CountBadge(e.count, e.blocked)
+        Text(
+            e.name,
+            Modifier.weight(1f).padding(start = 14.dp, end = 8.dp),
+            fontFamily = FontFamily.Monospace,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (e.blocked) Palette.TextHi else Palette.TextLo,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        CountBadge(e.count, e.blocked)
+    }
+}
+
+/** Local stand-in for a favicon: the site's initial on a stable muted tint. Never fetches. */
+@Composable
+private fun DomainMonogram(name: String, size: Dp = 26.dp) {
+    val (letter, slot) = remember(name) { monogram(name, Palette.Monograms.size) }
+    Box(
+        Modifier.size(size).clip(CircleShape).background(Palette.Monograms[slot]),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(letter.toString(), color = Palette.TextHi, fontSize = (size.value * 0.46f).sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -216,7 +286,7 @@ private fun CountBadge(count: Int, blocked: Boolean) {
  * the "whole site" option.
  */
 @Composable
-private fun EntryDialog(entry: QueryGroups.Entry, clock: ClockFormats, onDismiss: () -> Unit) {
+private fun EntryDialog(entry: QueryGroups.Entry, askers: List<QueryGroups.Entry>, clock: ClockFormats, onDismiss: () -> Unit) {
     // null = still loading the public suffix list (first use only; it's a disk read, so off main).
     val suffixes by produceState<List<String>?>(null, entry.name) {
         value = withContext(Dispatchers.IO) { ruleTargets(entry.name) }
@@ -240,23 +310,24 @@ private fun EntryDialog(entry: QueryGroups.Entry, clock: ClockFormats, onDismiss
         },
         text = {
             Column {
-                Fact("Times", "%,d".format(entry.count))
-                Fact("Last", clock.formatFull(entry.lastMillis))
-                if (entry.count > 1) Fact("First", clock.formatFull(entry.firstMillis))
-                Fact("Types", entry.qtypes.joinToString(", ") { QueryLog.typeName(it) })
+                Fact("Times", "%,d".format(askers.sumOf { it.count }))
+                Fact("Last", clock.formatFull(askers.maxOf { it.lastMillis }))
+                Fact("First", clock.formatFull(askers.minOf { it.firstMillis }))
+                Fact("Types", askers.flatMap { it.qtypes }.distinct().joinToString(", ") { QueryLog.typeName(it) })
                 Spacer(Modifier.height(10.dp))
-                Text(if (entry.uids.size > 1) "ASKED BY (LATEST FIRST)" else "ASKED BY", style = Overline, color = Palette.TextLo)
-                entry.uids.forEach { uid ->
-                    val app = rememberAppLabel(uid)
+                Text("ASKED BY", style = Overline, color = Palette.TextLo)
+                askers.forEach { a ->
+                    val app = rememberAppLabel(a.uid)
                     Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         AppIcon(app, size = 24.dp)
                         Spacer(Modifier.width(10.dp))
-                        Column {
+                        Column(Modifier.weight(1f)) {
                             Text(app?.name ?: "…", style = MaterialTheme.typography.bodyMedium)
                             app?.packageName?.let {
                                 Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.TextLo)
                             }
                         }
+                        Text("×%,d".format(a.count), style = MaterialTheme.typography.bodySmall.merge(Tabular), color = Palette.TextLo)
                     }
                 }
 

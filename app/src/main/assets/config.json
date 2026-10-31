@@ -6,7 +6,8 @@
     {
       "id": "quad9",
       "name": "Quad9",
-      "note": "Swiss non-profit. Blocks malware domains, validates DNSSEC, logs no IPs.",
+      "icon": "quad9",
+      "note": "Swiss non-profit run for public benefit. Blocks known malware and phishing domains, validates DNSSEC and never logs your IP address.",
       "upstreams": [
         {
           "url": "https://dns.quad9.net/dns-query",
@@ -22,7 +23,8 @@
     {
       "id": "cloudflare",
       "name": "Cloudflare",
-      "note": "Fastest anycast network. No filtering; independently audited, IP logs deleted within 25 h.",
+      "icon": "cloudflare",
+      "note": "Usually the fastest, thanks to a huge anycast network. No filtering at all. Privacy policy is independently audited and IP logs are deleted within 25 hours.",
       "upstreams": [
         {
           "url": "https://cloudflare-dns.com/dns-query",
@@ -38,7 +40,8 @@
     {
       "id": "cloudflare-security",
       "name": "Cloudflare Security",
-      "note": "Cloudflare plus malware and phishing blocking.",
+      "icon": "cloudflare",
+      "note": "Same network and privacy terms as Cloudflare (1.1.1.2), plus blocking of malware and phishing domains.",
       "upstreams": [
         {
           "url": "https://security.cloudflare-dns.com/dns-query",
@@ -54,7 +57,8 @@
     {
       "id": "mullvad",
       "name": "Mullvad",
-      "note": "Swedish VPN provider. No filtering, no query logging.",
+      "icon": "mullvad",
+      "note": "Run by the Swedish privacy-focused VPN provider. No filtering and no query logging, free for anyone.",
       "upstreams": [
         {
           "url": "https://dns.mullvad.net/dns-query",
@@ -68,7 +72,8 @@
     {
       "id": "mullvad-base",
       "name": "Mullvad Base",
-      "note": "Mullvad plus its own ad, tracker and malware blocking.",
+      "icon": "mullvad",
+      "note": "Mullvad with its own ad, tracker and malware blocking on top. Same no-logging policy.",
       "upstreams": [
         {
           "url": "https://base.dns.mullvad.net/dns-query",
@@ -82,7 +87,8 @@
     {
       "id": "adguard",
       "name": "AdGuard DNS",
-      "note": "Blocks ads and trackers on its side as well.",
+      "icon": "adguard",
+      "note": "From the AdGuard ad-blocker team (Cyprus). Blocks ads and trackers on its side as well, a second layer behind Wallupus.",
       "upstreams": [
         {
           "url": "https://dns.adguard-dns.com/dns-query",
@@ -98,7 +104,8 @@
     {
       "id": "google",
       "name": "Google Public DNS",
-      "note": "Very reliable, no filtering. Keeps temporary IP logs for 24–48 h.",
+      "icon": "google",
+      "note": "Very fast and reliable, no filtering. Keeps temporary logs with your IP for 24–48 hours, plus anonymised long-term logs.",
       "upstreams": [
         {
           "url": "https://dns.google/dns-query",

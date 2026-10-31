@@ -7,8 +7,17 @@ import org.json.JSONObject
 
 data class Upstream(val url: String, val bootstrap: List<String>)
 
-/** One choice on the Settings screen. [upstreams] are tried in order (sticky failover). */
-data class Resolver(val id: String, val name: String, val note: String, val upstreams: List<Upstream>)
+/**
+ * One choice on the Settings screen. [upstreams] are tried in order (sticky failover).
+ * [icon] names a bundled logo (see ui/ResolverIcon.kt); null or unknown = generic globe.
+ */
+data class Resolver(
+    val id: String,
+    val name: String,
+    val note: String,
+    val upstreams: List<Upstream>,
+    val icon: String? = null,
+)
 
 data class Source(val id: String, val name: String, val url: String, val enabled: Boolean)
 
@@ -38,6 +47,7 @@ class Config(
                     r.getJSONArray("upstreams").objects().map {
                         Upstream(it.getString("url"), it.getJSONArray("bootstrap").strings())
                     },
+                    r.optString("icon").takeIf { it.isNotEmpty() },
                 )
             }
             val sources = root.getJSONArray("sources").objects().map {

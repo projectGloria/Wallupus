@@ -1,36 +1,36 @@
 package dev.wallupus.log
 
 /**
- * Recent queries folded by (name, blocked): the same tracker hit 300 times is one row with a
- * count, not 300 rows. A name that flips (you added a rule) gets a second row, because "blocked"
- * and "allowed" are separate facts worth seeing.
+ * Recent queries folded by (asking app, name, blocked): the same tracker hit 300 times by one app
+ * is one row with a count, not 300 rows. Keyed per app so every count is that app's own: the Log
+ * shows apps with their domains underneath. A name that flips (you added a rule) gets a second
+ * row, because "blocked" and "allowed" are separate facts worth seeing.
  *
- * Bounded LRU by *last seen*: when full, the group nobody has asked for the longest is dropped.
+ * Bounded LRU by *last seen*: when full, the row nobody has asked for the longest is dropped.
  * Pure JVM (clock injected) so it's unit-tested; [QueryLog] wraps it.
  */
 class QueryGroups(private val capacity: Int, private val clock: () -> Long = System::currentTimeMillis) {
 
-    /** Immutable view for the UI. [uids] most recent first; [qtypes] in first-seen order. */
+    /** Immutable view for the UI. [qtypes] in first-seen order. */
     data class Entry(
+        val uid: Int,
         val name: String,
         val blocked: Boolean,
         val count: Int,
         val firstMillis: Long,
         val lastMillis: Long,
         val qtypes: List<Int>,
-        val uids: List<Int>,
     ) {
         /** Unique per row: LazyColumn keys on it so rows keep identity as they reorder. */
-        val key: String get() = (if (blocked) "b:" else "a:") + name
+        val key: String get() = key(uid, name, blocked)
     }
 
-    private class Group(val name: String, val blocked: Boolean, val firstMillis: Long) {
+    private class Group(val uid: Int, val name: String, val blocked: Boolean, val firstMillis: Long) {
         var count = 0
         var lastMillis = 0L
         val qtypes = ArrayList<Int>(2) // almost always A + AAAA (+ HTTPS); linear scan beats a set
-        val uids = ArrayList<Int>(2)
 
-        fun toEntry() = Entry(name, blocked, count, firstMillis, lastMillis, qtypes.toList(), uids.toList())
+        fun toEntry() = Entry(uid, name, blocked, count, firstMillis, lastMillis, qtypes.toList())
     }
 
     // accessOrder=true: every get()/put() moves the group to the tail, so iteration order is
@@ -42,18 +42,11 @@ class QueryGroups(private val capacity: Int, private val clock: () -> Long = Sys
     @Synchronized
     fun record(name: String, qtype: Int, blocked: Boolean, uid: Int) {
         val now = clock()
-        val key = (if (blocked) "b:" else "a:") + name
-        val g = groups[key] ?: Group(name, blocked, now).also { groups[key] = it }
+        val key = key(uid, name, blocked)
+        val g = groups[key] ?: Group(uid, name, blocked, now).also { groups[key] = it }
         g.count++
         g.lastMillis = now
         if (qtype !in g.qtypes) g.qtypes += qtype
-        // Most recent asker first, capped: the row shows one icon, the detail a short list.
-        val at = g.uids.indexOf(uid)
-        if (at != 0) {
-            if (at > 0) g.uids.removeAt(at)
-            g.uids.add(0, uid)
-            if (g.uids.size > MAX_UIDS) g.uids.removeAt(g.uids.lastIndex)
-        }
     }
 
     /** Most recently seen first. */
@@ -69,6 +62,6 @@ class QueryGroups(private val capacity: Int, private val clock: () -> Long = Sys
     fun clear() = groups.clear()
 
     private companion object {
-        const val MAX_UIDS = 6
+        fun key(uid: Int, name: String, blocked: Boolean) = "$uid|" + (if (blocked) "b:" else "a:") + name
     }
 }

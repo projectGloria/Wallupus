@@ -20,6 +20,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,6 +43,8 @@ import dev.wallupus.Upstream
 import dev.wallupus.WallupusApp
 import dev.wallupus.dns.Resolvers
 import dev.wallupus.dns.customUpstream
+import dev.wallupus.vpn.Modes
+import dev.wallupus.vpn.WallupusVpnService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -53,9 +56,13 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 private typealias Latencies = MutableMap<String, Long?>
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(onDnsToggle: (Boolean) -> Unit) {
     val config = WallupusApp.config
     val selected by Resolvers.selected.collectAsStateWithLifecycle()
+    val running by WallupusVpnService.running.collectAsStateWithLifecycle()
+    val mode by Modes.state.collectAsStateWithLifecycle()
+    // What the user sees as "on" is what actually answers right now, not just the saved switch.
+    val dnsActive = running && mode.dns
     val scope = rememberCoroutineScope()
 
     // Screen-local UI state; the source of truth for the choice itself is Resolvers.selected.
@@ -79,7 +86,12 @@ fun SettingsScreen() {
             try {
                 val ms = withContext(Dispatchers.IO) { WallupusApp.doh.probe(upstreams) }
                 latency[id] = ms
-                if (ms != null) apply() else error = "Couldn't get an answer from $name, so nothing changed."
+                if (ms != null) {
+                    apply()
+                    // Picking a resolver means "use it": switch DNS on (and the tunnel with it,
+                    // consent permitting), whether or not blocking is on.
+                    if (!dnsActive) onDnsToggle(true)
+                } else error = "Couldn't get an answer from $name, so nothing changed."
             } finally {
                 busy = null
             }
@@ -94,7 +106,16 @@ fun SettingsScreen() {
         item {
             Panel {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("DNS RESOLVER", Modifier.weight(1f), style = Overline, color = Palette.TextLo)
+                    Text(
+                        if (dnsActive) "ENCRYPTED DNS · ON" else "ENCRYPTED DNS · OFF",
+                        Modifier.weight(1f),
+                        style = Overline,
+                        color = if (dnsActive) Palette.Crimson else Palette.TextLo,
+                    )
+                    Switch(checked = dnsActive, onCheckedChange = onDnsToggle)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("RESOLVER", Modifier.weight(1f), style = Overline, color = Palette.TextLo)
                     TextButton(
                         enabled = busy == null,
                         onClick = {
@@ -112,6 +133,7 @@ fun SettingsScreen() {
                 }
                 Text(
                     "Every lookup Wallupus doesn't block goes here, encrypted with DNS-over-HTTPS. " +
+                        "Works with blocking on or off. When off, your network's own DNS answers. " +
                         "Switching takes effect on the next lookup.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Palette.TextLo,
@@ -122,7 +144,9 @@ fun SettingsScreen() {
                     ResolverRow(
                         name = r.name,
                         note = r.note,
+                        icon = r.icon,
                         host = r.upstreams.first().url.toHttpUrl().host,
+                        addresses = addressLine(r.upstreams.flatMap { it.bootstrap }),
                         selected = selected == r.id,
                         testing = busy == r.id,
                         latency = latency,
@@ -137,6 +161,8 @@ fun SettingsScreen() {
                 ResolverRow(
                     name = "Custom",
                     note = "Any DNS-over-HTTPS server you trust.",
+                    icon = null,
+                    addresses = if (selected == Config.CUSTOM_RESOLVER) Resolvers.savedCustom()?.bootstrap?.let(::addressLine) else null,
                     // Read each time (in-memory prefs): it changes when a new custom URL passes its test.
                     host = if (selected == Config.CUSTOM_RESOLVER) Resolvers.savedCustom()?.url?.toHttpUrl()?.host else null,
                     selected = selected == Config.CUSTOM_RESOLVER,
@@ -191,7 +217,9 @@ fun SettingsScreen() {
 private fun ResolverRow(
     name: String,
     note: String,
+    icon: String?,
     host: String?,
+    addresses: String?,
     selected: Boolean,
     testing: Boolean,
     latency: Latencies,
@@ -207,10 +235,14 @@ private fun ResolverRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RadioButton(selected = selected, onClick = null) // the whole row is the click target
-        Column(Modifier.weight(1f).padding(start = 8.dp, end = 8.dp)) {
+        ResolverLogo(icon, Modifier.padding(start = 4.dp))
+        Column(Modifier.weight(1f).padding(start = 12.dp, end = 8.dp)) {
             Text(name, style = MaterialTheme.typography.bodyLarge, color = if (selected) Palette.TextHi else Palette.TextHi.copy(alpha = 0.85f))
             if (note.isNotEmpty()) Text(note, style = MaterialTheme.typography.bodySmall, color = Palette.TextLo)
             host?.let { Text(it, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, color = Palette.TextLo) }
+            addresses?.takeIf { it.isNotEmpty() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, color = Palette.TextLo)
+            }
         }
         when {
             testing -> CircularProgressIndicator(Modifier.size(16.dp), color = Palette.TextLo, strokeWidth = 2.dp)
@@ -273,3 +305,14 @@ private fun CustomForm(
 }
 
 private const val ALL = "*all*"
+
+/**
+ * Bootstrap IPs for display: two IPv4 and one IPv6 at most (a full list wraps into a wall of
+ * digits on a phone), with "+N" for the rest.
+ */
+private fun addressLine(ips: List<String>): String {
+    val (v6, v4) = ips.distinct().partition { ':' in it }
+    val shown = v4.take(2) + v6.take(1)
+    val more = ips.distinct().size - shown.size
+    return shown.joinToString(" · ") + if (more > 0) " +$more" else ""
+}

@@ -44,6 +44,9 @@ class WallupusVpnService : VpnService() {
     @Synchronized
     private fun startTunnel() {
         if (tun != null) return
+        // Always-On / STICKY starts don't go through MainActivity's switches; never run a tunnel
+        // that does nothing.
+        Modes.ensureAny()
         val pfd = try {
             val builder = Builder()
                 .setSession("Wallupus") // shown in the VPN dialog and Settings → VPN

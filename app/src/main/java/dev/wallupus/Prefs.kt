@@ -43,6 +43,16 @@ class Prefs(ctx: Context) {
             putString(K_CUSTOM_BOOT, v?.bootstrap?.joinToString(","))
         }
 
+    /** Filter lookups through the blocklist. Defaults on: before the split, running = blocking. */
+    var blocking: Boolean
+        get() = sp.getBoolean(K_BLOCKING, true)
+        set(v) = sp.edit { putBoolean(K_BLOCKING, v) }
+
+    /** Send lookups to the chosen DoH resolver; off = the network's own DNS. Defaults on, as before. */
+    var dnsEnabled: Boolean
+        get() = sp.getBoolean(K_DNS, true)
+        set(v) = sp.edit { putBoolean(K_DNS, v) }
+
     val lifetimeBlocked: Long get() = sp.getLong(K_LIFE_BLOCKED, 0L)
     val lifetimeTotal: Long get() = sp.getLong(K_LIFE_TOTAL, 0L)
 
@@ -74,5 +84,7 @@ class Prefs(ctx: Context) {
         const val K_RESOLVER = "resolver"
         const val K_CUSTOM_URL = "custom_doh_url"
         const val K_CUSTOM_BOOT = "custom_doh_bootstrap"
+        const val K_BLOCKING = "mode_blocking"
+        const val K_DNS = "mode_dns"
     }
 }

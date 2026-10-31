@@ -99,11 +99,13 @@ To show which app made each lookup, Wallupus asks the kernel for the owning UID 
 | File | Job |
 |---|---|
 | `vpn/WallupusVpnService.kt` | Sets up the tunnel: fake DNS IPs + public resolver trap routes, excludes itself |
-| `vpn/PacketLoop.kt` | `poll()` loop over the tun fd; block → instant NXDOMAIN, TCP → RST, else cache → DoH |
+| `vpn/PacketLoop.kt` | `poll()` loop over the tun fd; block → instant NXDOMAIN, TCP → RST, else cache → DoH (or the network's DNS) |
+| `vpn/Modes.kt` | The two independent switches, blocking and encrypted DNS; the tunnel runs while either is on |
 | `net/IpPacket.kt` | Strict IPv4/IPv6/UDP parser, reply builder, and TCP RST synthesizer with checksums |
 | `dns/DnsMessage.kt` | Question parsing (rejects compression pointers), NXDOMAIN/SERVFAIL, TTL reading |
 | `dns/DohClient.kt` | RFC 8484 POST via OkHttp, bootstrap IPs, sticky failover, live upstream swap, latency probe |
 | `dns/Resolvers.kt` | The active resolver choice (preset or custom), persisted and pushed into the DoH client |
+| `dns/PlainDnsClient.kt` | Plain UDP to the real network's DNS servers, for blocking with encrypted DNS off |
 | `dns/CustomUpstream.kt` | Custom DoH URL / bootstrap-IP validation and the test query |
 | `dns/DnsCache.kt` | 512-entry TTL-respecting LRU |
 | `filter/ListParser.kt` | hosts / plain domains / `\|\|domain^` + `@@` exceptions; everything else skipped |
@@ -113,8 +115,10 @@ To show which app made each lookup, Wallupus asks the kernel for the owning UID 
 | `filter/SourceCheck.kt` | Per-source check before a download replaces its cached copy (rejects error pages and >75% shrinks) |
 | `filter/RuleTargets.kt` | Rule-dialog choices, capped at the registrable domain via OkHttp's bundled Public Suffix List |
 | `filter/UpdateWorker.kt` | Daily on Wi-Fi + battery OK (plus on VPN start when stale); "Update now" on any network |
-| `log/QueryGroups.kt` | RAM-only log grouped by (name, outcome): count, first/last seen, query types, asking apps |
+| `log/QueryGroups.kt` | RAM-only log grouped by (app, name, outcome): count, first/last seen, query types |
+| `log/AppGroups.kt` | Folds the log into per-app sections for the Log screen; domain monogram letter/colour |
 | `ui/AppLabels.kt` | UID → app name + icon, cached in memory |
+| `ui/ResolverIcon.kt` | Bundled resolver logos (`res/drawable/ic_dns_*.xml`, keyed by `icon` in config.json) |
 | `update/AppUpdater.kt` | Manual app update: latest GitHub release → download (size-checked) → system installer |
 | `update/ReleaseTag.kt` | versionCode from a `v0.1.<count>` release tag |
 

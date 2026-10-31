@@ -28,7 +28,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.wallupus.WallupusApp
+import dev.wallupus.dns.Resolvers
 import dev.wallupus.filter.UpdateWorker
+import dev.wallupus.vpn.Modes
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import dev.wallupus.vpn.WallupusVpnService
 import kotlinx.coroutines.delay
 
@@ -37,9 +42,21 @@ class MainActivity : ComponentActivity() {
     // System "Connection request" dialog. Registered at construction time, as the
     // Activity Result API requires (registering later throws once the activity is STARTED).
     private val vpnConsent = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        // Denied, or another VPN holds the slot: drop the spinner at once rather than on timeout.
-        if (it.resultCode == RESULT_OK) startVpn() else connecting = false
+        // Denied, or another VPN holds the slot: drop the spinner at once rather than on timeout,
+        // and persist nothing: the switches only change once the tunnel can actually come up.
+        val next = pending
+        pending = null
+        if (it.resultCode == RESULT_OK) {
+            next?.let(Modes::set)
+            startVpn()
+        } else {
+            connecting = false
+        }
     }
+
+    // The switch state waiting on the consent dialog. Plain field: it only bridges request() and
+    // the result callback, nothing renders it.
+    private var pending: Modes.Mode? = null
 
     // Tap-to-running gap (consent dialog + establish()). Snapshot state on the Activity, not in
     // composition, because toggle() and the consent callback live out here.
@@ -55,6 +72,8 @@ class MainActivity : ComponentActivity() {
             WallupusTheme {
                 var tab by rememberSaveable { mutableIntStateOf(0) }
                 val running by WallupusVpnService.running.collectAsStateWithLifecycle()
+                val mode by Modes.state.collectAsStateWithLifecycle()
+                val resolverId by Resolvers.selected.collectAsStateWithLifecycle()
                 // Service came up (or went down): the pending state is over either way.
                 LaunchedEffect(running) { connecting = false }
                 // Safety net: establish() can fail and stopSelf() without running ever changing.
@@ -86,11 +105,18 @@ class MainActivity : ComponentActivity() {
                     // Scaffold's Surface used to provide this. Without it, any Text with no explicit
                     // colour falls back to LocalContentColor's default: black on our black.
                     CompositionLocalProvider(LocalContentColor provides Palette.TextHi) {
-                        TopBar(tab, onTab = { tab = it })
+                        TopBar(
+                            tab,
+                            onTab = { tab = it },
+                            dnsIcon = Resolvers.preset(resolverId)?.icon,
+                            dnsActive = running && mode.dns,
+                            onDnsToggle = { request(dns = it) },
+                        )
                         when (tab) {
-                            0 -> HomeScreen(connecting, onToggle = ::toggle, onUpdateNow = { UpdateWorker.runNow(this@MainActivity) })
+                            0 -> HomeScreen(connecting, onToggle = { request(blocking = it) }, onDnsToggle = { request(dns = it) })
                             1 -> LogScreen()
-                            else -> SettingsScreen()
+                            2 -> ListsScreen(onUpdateNow = { UpdateWorker.runNow(this@MainActivity) })
+                            else -> SettingsScreen(onDnsToggle = { request(dns = it) })
                         }
                     }
                 }
@@ -98,16 +124,40 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun toggle(on: Boolean) {
-        if (!on) {
+    /**
+     * Flips one switch (null = leave as is). Blocking and DNS are independent; the tunnel runs
+     * while either is on, so this decides whether it has to start, keep running, or stop.
+     */
+    private fun request(blocking: Boolean? = null, dns: Boolean? = null) {
+        val current = Modes.state.value
+        val next = Modes.Mode(blocking ?: current.blocking, dns ?: current.dns)
+        if (!next.any) {
+            Modes.set(next)
             WallupusVpnService.stop(this)
             return
         }
-        connecting = true
+        if (WallupusVpnService.running.value) {
+            // Tunnel already up: the packet loop picks the new mode up on its next query.
+            Modes.set(next)
+            if (next.blocking && !current.blocking) {
+                // DNS-only until now, so the list may never have been fetched or be days old.
+                WallupusApp.appScope.launch(Dispatchers.IO) { UpdateWorker.refreshIfStale(applicationContext) }
+            }
+            return
+        }
+        // Only the block button has a "connecting" state; a DNS-only start shouldn't spin it.
+        connecting = next.blocking
+        pending = next
         // prepare() returns null if consent was already granted; otherwise an Intent for the
         // system dialog. It also returns non-null if another VPN app is currently active.
         val consent = VpnService.prepare(this)
-        if (consent == null) startVpn() else vpnConsent.launch(consent)
+        if (consent == null) {
+            Modes.set(next)
+            pending = null
+            startVpn()
+        } else {
+            vpnConsent.launch(consent)
+        }
     }
 
     private fun startVpn() {

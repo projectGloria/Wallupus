@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Quad9, simplified: the brand's red disc with a white "9". -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#D8244E" android:pathData="M12,1a11,11 0,1 0,0 22a11,11 0,1 0,0 -22z" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="2.6" android:strokeLineCap="round"
+        android:pathData="M12,6.2a3.4,3.4 0,1 0,0 6.8a3.4,3.4 0,1 0,0 -6.8zM15.4,9.6v2.8c0,2.6 -1.4,4.6 -4.4,5.2" />
+</vector>

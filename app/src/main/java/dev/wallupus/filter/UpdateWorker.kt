@@ -52,6 +52,17 @@ class UpdateWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
             WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.UPDATE, req)
         }
 
+        /**
+         * Blocking just started (VPN start, or switched on in DNS-only mode): refresh at once if
+         * there's no list or it's older than [STALE_MS]. Blocking call (may load the list from
+         * disk), so off main.
+         */
+        fun refreshIfStale(ctx: Context) {
+            Filters.ensureLoaded()
+            val status = Filters.status.value
+            if (status.listDomains == 0 || System.currentTimeMillis() - status.lastUpdateMillis > STALE_MS) runNow(ctx)
+        }
+
         /** "Update now" — any network, user asked for it explicitly. */
         fun runNow(ctx: Context) {
             val req = OneTimeWorkRequestBuilder<UpdateWorker>()

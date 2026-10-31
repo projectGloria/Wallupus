@@ -44,6 +44,15 @@ object Palette {
 
     val TextHi = Color(0xFFF1E9EA)
     val TextLo = Color(0xFF9A8D90)
+
+    /**
+     * Domain monogram discs in the Log: muted, low-chroma tints so a screen full of them stays
+     * quiet next to the crimson accents. Indexed by `monogram()`'s stable hash.
+     */
+    val Monograms = listOf(
+        Color(0xFF3A2A30), Color(0xFF2C3238), Color(0xFF33302A),
+        Color(0xFF2A3530), Color(0xFF362B3A), Color(0xFF3A3028),
+    )
 }
 
 private val Scheme = darkColorScheme(

@@ -12,6 +12,7 @@ import dev.wallupus.WallupusApp
 import dev.wallupus.dns.DnsCache
 import dev.wallupus.dns.DnsMessage
 import dev.wallupus.dns.DohClient
+import dev.wallupus.dns.PlainDnsClient
 import dev.wallupus.filter.Filters
 import dev.wallupus.filter.UpdateWorker
 import dev.wallupus.log.QueryLog
@@ -63,7 +64,12 @@ class PacketLoop(
     // queueing. Bounds memory when the network is dead and every app is retrying in a loop.
     private val inflight = Semaphore(MAX_INFLIGHT)
     private val cache = DnsCache()
-    private var cacheGeneration = doh.generation // reader thread only
+    // Network's own DNS, for when the DoH switch is off. Cheap to hold: no sockets until used.
+    private val plain = PlainDnsClient(connectivity)
+    // Reader thread only. The DoH flag is part of the cache identity: answers from the network's
+    // resolver and from DoH must not be mixed after a switch.
+    private var cacheGeneration = doh.generation
+    private var cacheDns = Modes.state.value.dns
     private val thread = Thread(::run, "wallupus-tun")
 
     fun start() = thread.start()
@@ -82,11 +88,8 @@ class PacketLoop(
     private fun run() {
         Filters.ensureLoaded() // never start answering with an empty matcher if a list exists
         // First run (including via Always-On VPN) or stale (>24h): trigger a background refresh
-        // so daily-rotating DGA ad domains don't slip through.
-        val status = Filters.status.value
-        if (status.listDomains == 0 || System.currentTimeMillis() - status.lastUpdateMillis > UpdateWorker.STALE_MS) {
-            UpdateWorker.runNow(WallupusApp.instance)
-        }
+        // so daily-rotating DGA ad domains don't slip through. DNS-only mode doesn't need a list.
+        if (Modes.state.value.blocking) UpdateWorker.refreshIfStale(WallupusApp.instance)
         val buf = ByteArray(WallupusVpnService.MTU)
         val pollIn = OsConstants.POLLIN.toShort()
         val fds = arrayOf(
@@ -136,17 +139,22 @@ class PacketLoop(
         if (udp.dstPort != 53) return
         val q = DnsMessage.parseQuery(udp.payload) ?: return
 
-        // Resolver switched in Settings: cached answers came from the old one. Checked here
-        // rather than cleared from the UI thread so the cache keeps a single owner.
+        // One volatile read per packet: both switches are seen consistently for this query.
+        val mode = Modes.state.value
+
+        // Resolver switched in Settings (or DoH turned on/off): cached answers came from the old
+        // one. Checked here rather than cleared from the UI thread so the cache keeps a single owner.
         val gen = doh.generation
-        if (gen != cacheGeneration) {
+        if (gen != cacheGeneration || mode.dns != cacheDns) {
             cache.clear()
             cacheGeneration = gen
+            cacheDns = mode.dns
         }
 
         // Matcher before cache: a domain blocked by a fresh list update is blocked immediately,
-        // even if an older allowed answer is still cached.
-        val blocked = Filters.matcher.get().isBlocked(q.name)
+        // even if an older allowed answer is still cached. Blocking off = DNS-only mode, where
+        // everything is forwarded (and still logged, as allowed).
+        val blocked = mode.blocking && Filters.matcher.get().isBlocked(q.name)
         QueryLog.record(q.name, q.qtype, blocked, ownerUid(udp))
         if (blocked) {
             reply(udp, DnsMessage.blockedResponse(udp.payload, q))
@@ -165,7 +173,9 @@ class PacketLoop(
         scope.launch {
             try {
                 // RFC 8484 §4.1: send ID 0 so HTTP caches can share answers; restore it after.
-                val resp = doh.resolve(DnsMessage.withId(udp.payload, 0))
+                // (PlainDnsClient picks its own random ID; the restore below covers both.)
+                val zeroed = DnsMessage.withId(udp.payload, 0)
+                val resp = if (mode.dns) doh.resolve(zeroed) else plain.resolve(zeroed)
                 val answer = if (resp != null && DnsMessage.isResponseFor(resp, q)) {
                     cache.put(q, resp)
                     DnsMessage.withId(resp, q.id)

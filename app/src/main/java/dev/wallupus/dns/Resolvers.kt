@@ -1,6 +1,7 @@
 package dev.wallupus.dns
 
 import dev.wallupus.Config
+import dev.wallupus.Resolver
 import dev.wallupus.Upstream
 import dev.wallupus.WallupusApp
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +23,9 @@ object Resolvers {
 
     /** The upstreams [selected] stands for. Read once when the DoH client is built. */
     fun activeUpstreams(): List<Upstream> = upstreamsFor(_selected.value)
+
+    /** The preset behind [id], or null for [Config.CUSTOM_RESOLVER]: for the badge's logo and name. */
+    fun preset(id: String): Resolver? = config.resolvers.firstOrNull { it.id == id }
 
     /** Saved custom endpoint, for pre-filling the form; null until one has passed a test. */
     fun savedCustom(): Upstream? = prefs.customUpstream

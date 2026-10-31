@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cloudflare cloud, simplified: big orange cloud with the lighter trailing puff. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FAAE40" android:pathData="M18.6,11.6a3.2,3.2 0,0 1,4.4 3.0a2.2,2.2 0,0 1,-2.2 2.2H16.2z" />
+    <path android:fillColor="#F38020" android:pathData="M3.2,16.8a2.6,2.6 0,0 1,0.4 -5.2a6.4,6.4 0,0 1,12.2 -1.6a3.6,3.6 0,0 1,3.6 4.2l-0.8,2.6z" />
+</vector>
