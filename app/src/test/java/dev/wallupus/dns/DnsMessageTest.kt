@@ -82,4 +82,55 @@ class DnsMessageTest {
         now += 61_000_000_000L
         assertNull(cache.get(q))
     }
+
+    @Test fun isResponseForRejectsMismatchedType() {
+        val aaaa = DnsMessage.parseQuery(TestPackets.dnsQuery("a.com", qtype = 28))!!
+        val aQuery = TestPackets.dnsQuery("a.com", qtype = 1)
+        val aAnswer = DnsMessage.blockedResponse(aQuery, DnsMessage.parseQuery(aQuery)!!)
+        assertFalse(DnsMessage.isResponseFor(aAnswer, aaaa))
+    }
+
+    @Test fun ttlWithTopBitSetMeansDoNotCache() {
+        // RFC 2181 §8: TTL 0x80000000 is treated as 0, not clamped to the one-hour maximum.
+        val r = TestPackets.hex(
+            "1234 8180 0001 0001 0000 0000" +
+                "07 6578616d706c65 03 636f6d 00 0001 0001" +
+                "c00c 0001 0001 80000000 0004 5db8d822",
+        )
+        assertNull(DnsMessage.cacheTtlSeconds(r))
+    }
+
+    @Test fun cacheHitEchoesTheNewQuestionCasing() {
+        val cache = DnsCache(clock = { 0L })
+        val first = TestPackets.dnsQuery("Example.COM", id = 0x1111)
+        val q1 = DnsMessage.parseQuery(first)!!
+        cache.put(q1, DnsMessage.blockedResponse(first, q1))
+
+        // A 0x20-randomizing client asks again with different casing and checks the echo.
+        val second = TestPackets.dnsQuery("eXaMpLe.cOm", id = 0x2222)
+        val q2 = DnsMessage.parseQuery(second)!!
+        val hit = DnsMessage.forQuery(cache.get(q2)!!, second, q2)
+        assertTrue(hit.copyOfRange(12, q2.questionEnd).contentEquals(second.copyOfRange(12, q2.questionEnd)))
+        assertEquals(0x22, hit[0].toInt()); assertEquals(0x22, hit[1].toInt())
+        assertTrue(DnsMessage.isResponseFor(hit, q2))
+    }
+
+    @Test fun dnssecQueriesBypassTheCache() {
+        val plain = TestPackets.dnsQuery("x.com")
+        val withDo = TestPackets.dnsQuery("x.com", dnssecOk = true)
+        val withCd = TestPackets.dnsQuery("x.com").also { it[3] = (it[3].toInt() or 0x10).toByte() }
+        val qPlain = DnsMessage.parseQuery(plain)!!
+        val qDo = DnsMessage.parseQuery(withDo)!!
+        val qCd = DnsMessage.parseQuery(withCd)!!
+        assertFalse(qPlain.dnssec)
+        assertTrue(qDo.dnssec)
+        assertTrue(qCd.dnssec)
+
+        val cache = DnsCache(clock = { 0L })
+        cache.put(qDo, DnsMessage.blockedResponse(withDo, qDo))
+        assertNull(cache.get(qPlain)) // a DO answer is never stored, so it can't leak to plain clients
+        cache.put(qPlain, DnsMessage.blockedResponse(plain, qPlain))
+        assertNull(cache.get(qDo)) // plain answer has no RRSIGs: never serve it to a DO client
+        assertTrue(cache.get(qPlain) != null)
+    }
 }

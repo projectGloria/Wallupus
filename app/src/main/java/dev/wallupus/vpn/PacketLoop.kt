@@ -123,7 +123,7 @@ class PacketLoop(tun: ParcelFileDescriptor, private val doh: DohClient) {
         }
 
         cache.get(q)?.let {
-            reply(udp, DnsMessage.withId(it, q.id))
+            reply(udp, DnsMessage.forQuery(it, udp.payload, q))
             return
         }
 

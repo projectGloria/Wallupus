@@ -8,7 +8,13 @@ object TestPackets {
         s.replace(" ", "").chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
     /** Standard query, RD=1, one question, with an EDNS OPT record like real stubs send. */
-    fun dnsQuery(name: String, qtype: Int = 1, id: Int = 0x1234, withEdns: Boolean = true): ByteArray {
+    fun dnsQuery(
+        name: String,
+        qtype: Int = 1,
+        id: Int = 0x1234,
+        withEdns: Boolean = true,
+        dnssecOk: Boolean = false, // EDNS DO bit; needs withEdns
+    ): ByteArray {
         val out = ArrayList<Byte>()
         fun u16(v: Int) { out += (v ushr 8).toByte(); out += v.toByte() }
         u16(id); u16(0x0100); u16(1); u16(0); u16(0); u16(if (withEdns) 1 else 0)
@@ -18,7 +24,7 @@ object TestPackets {
         }
         out += 0
         u16(qtype); u16(1)
-        if (withEdns) { out += 0; u16(41); u16(1232); u16(0); u16(0); u16(0) }
+        if (withEdns) { out += 0; u16(41); u16(1232); u16(0); u16(if (dnssecOk) 0x8000 else 0); u16(0) }
         return out.toByteArray()
     }
 

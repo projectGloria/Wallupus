@@ -21,11 +21,17 @@ class DnsCache(
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Entry>) = size > capacity
     }
 
-    private fun key(q: DnsQuestion) = "${q.qtype}:${q.name}"
+    private fun key(q: DnsQuestion) = "${q.qclass}:${q.qtype}:${q.name}"
 
-    /** Returns a cached response (with ID still from the original query — caller must re-ID). */
+    /**
+     * Returns a cached response, still addressed to the original asker; re-address it with
+     * [DnsMessage.forQuery]. DNSSEC-aware queries (CD/DO) bypass the cache both ways: an answer
+     * fetched without DO has no RRSIGs, and one fetched with CD may be unvalidated, so neither
+     * can be shared across the two kinds of client. Android's stub resolver sets neither.
+     */
     @Synchronized
     fun get(q: DnsQuestion): ByteArray? {
+        if (q.dnssec) return null
         val k = key(q)
         val e = map[k] ?: return null
         if (clock() >= e.expiresAtNanos) {
@@ -37,10 +43,8 @@ class DnsCache(
 
     @Synchronized
     fun put(q: DnsQuestion, response: ByteArray) {
+        if (q.dnssec) return
         val ttl = DnsMessage.cacheTtlSeconds(response) ?: return
         map[key(q)] = Entry(response, clock() + ttl * 1_000_000_000L)
     }
-
-    @Synchronized
-    fun clear() = map.clear()
 }

@@ -4,8 +4,18 @@ import dev.wallupus.net.put16
 import dev.wallupus.net.u16
 import dev.wallupus.net.u8
 
-/** The single question of a standard query. [questionEnd] = offset just past QTYPE/QCLASS. */
-data class DnsQuestion(val id: Int, val name: String, val qtype: Int, val questionEnd: Int)
+/**
+ * The single question of a standard query. [questionEnd] = offset just past QTYPE/QCLASS.
+ * [dnssec] = the client set CD or EDNS DO, i.e. it wants to see (or validate) DNSSEC records.
+ */
+data class DnsQuestion(
+    val id: Int,
+    val name: String,
+    val qtype: Int,
+    val qclass: Int,
+    val questionEnd: Int,
+    val dnssec: Boolean = false,
+)
 
 /**
  * Just enough DNS wire format (RFC 1035) to read a question, synthesize a refusal, and read TTLs
@@ -13,6 +23,9 @@ data class DnsQuestion(val id: Int, val name: String, val qtype: Int, val questi
  */
 object DnsMessage {
     private const val HEADER = 12
+    private const val FLAG_CD = 0x0010
+    private const val TYPE_OPT = 41
+    private const val EDNS_DO = 0x8000
     private const val RCODE_NOERROR = 0
     private const val RCODE_SERVFAIL = 2
     private const val RCODE_NXDOMAIN = 3
@@ -54,7 +67,30 @@ object DnsMessage {
             i += 1 + labelLen
         }
         if (i + 4 > msg.size) return null
-        return DnsQuestion(id = u16(msg, 0), name = name.toString(), qtype = u16(msg, i), questionEnd = i + 4)
+        return DnsQuestion(
+            id = u16(msg, 0),
+            name = name.toString(),
+            qtype = u16(msg, i),
+            qclass = u16(msg, i + 2),
+            questionEnd = i + 4,
+            dnssec = flags and FLAG_CD != 0 || ednsDo(msg, i + 4),
+        )
+    }
+
+    /**
+     * True if the query's EDNS OPT record (RFC 6891) has the DO bit. Walks the records after the
+     * question; a malformed tail just reads as "no DO" since upstream sees the original bytes anyway.
+     */
+    private fun ednsDo(msg: ByteArray, start: Int): Boolean {
+        var i = start
+        repeat(u16(msg, 6) + u16(msg, 8) + u16(msg, 10)) {
+            i = skipName(msg, i) ?: return false
+            if (i + 10 > msg.size) return false
+            // TYPE(2) CLASS(2) TTL(4) RDLENGTH(2). For OPT the TTL is ext-rcode, version, flags.
+            if (u16(msg, i) == TYPE_OPT) return u16(msg, i + 6) and EDNS_DO != 0
+            i += 10 + u16(msg, i + 8)
+        }
+        return false
     }
 
     /**
@@ -86,27 +122,39 @@ object DnsMessage {
     /** Copy of [msg] with its transaction ID replaced. */
     fun withId(msg: ByteArray, id: Int): ByteArray = msg.copyOf().also { put16(it, 0, id) }
 
-    /** Cheap sanity check on an upstream answer before we hand it to a client. */
+    /**
+     * A cached [response] re-addressed to a new [query]: its ID, and its question bytes too. The
+     * cache key is the lowercased name, so the cached question carries whatever casing the first
+     * asker used; a client doing DNS 0x20 case randomization checks the echo byte-for-byte.
+     * Same name ignoring case = same wire length, so the copy is a straight overwrite.
+     */
+    fun forQuery(response: ByteArray, query: ByteArray, q: DnsQuestion): ByteArray {
+        val out = withId(response, q.id)
+        if (out.size >= q.questionEnd) query.copyInto(out, HEADER, HEADER, q.questionEnd)
+        return out
+    }
+
+    /** Cheap sanity check on an upstream answer before we hand it to a client (and cache it). */
     fun isResponseFor(msg: ByteArray, q: DnsQuestion): Boolean {
         if (msg.size < HEADER) return false
         if (u16(msg, 2) and 0x8000 == 0) return false
-        val name = readQuestionName(msg) ?: return false
-        return name.equals(q.name, ignoreCase = true)
-    }
-
-    private fun readQuestionName(msg: ByteArray): String? {
-        if (u16(msg, 4) < 1) return null
+        if (u16(msg, 4) < 1) return false
         val sb = StringBuilder()
         var i = HEADER
-        while (i < msg.size) {
+        while (true) {
+            if (i >= msg.size) return false
             val l = msg[i].u8()
-            if (l == 0) return sb.toString()
-            if (l and 0xC0 != 0 || i + 1 + l > msg.size) return null
+            if (l == 0) { i++; break }
+            if (l and 0xC0 != 0 || i + 1 + l > msg.size) return false
             if (sb.isNotEmpty()) sb.append('.')
             for (k in i + 1..i + l) sb.append(msg[k].u8().toChar())
             i += 1 + l
         }
-        return null
+        // Type and class too: a mismatched answer wouldn't just reach the client, it would be
+        // cached under this question's key and replayed to everyone who asks.
+        if (i + 4 > msg.size) return false
+        return sb.toString().equals(q.name, ignoreCase = true) &&
+            u16(msg, i) == q.qtype && u16(msg, i + 2) == q.qclass
     }
 
     /**
@@ -133,7 +181,10 @@ object DnsMessage {
             i = skipName(msg, i) ?: return null
             if (i + 10 > msg.size) return null
             // TYPE(2) CLASS(2) TTL(4) RDLENGTH(2)
-            val ttl = (u16(msg, i + 4).toLong() shl 16) or u16(msg, i + 6).toLong()
+            val raw = (u16(msg, i + 4).toLong() shl 16) or u16(msg, i + 6).toLong()
+            // RFC 2181 §8: a TTL with the top bit set is to be treated as zero (don't cache),
+            // not as a huge positive number that we'd clamp to an hour.
+            val ttl = if (raw and 0x8000_0000L != 0L) 0L else raw
             val rdLen = u16(msg, i + 8)
             i += 10 + rdLen
             if (i > msg.size) return null
