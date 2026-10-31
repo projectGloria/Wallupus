@@ -31,7 +31,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +42,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -59,6 +60,7 @@ import dev.wallupus.log.groupByApp
 import dev.wallupus.log.monogram
 import dev.wallupus.log.QueryLog
 import kotlinx.coroutines.Dispatchers
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.withContext
@@ -75,14 +77,13 @@ fun LogScreen() {
     var filter by rememberSaveable { mutableStateOf(LogFilter.ALL) }
     var top by rememberSaveable { mutableStateOf(false) } // false = most recent first
     var query by rememberSaveable { mutableStateOf("") }
-    var entries by remember { mutableStateOf(QueryLog.snapshot()) }
+    // Snapshot at most twice a second; see QueryLog for why we don't stream every entry.
+    // WithLifecycle so a backgrounded Log stops copying 1000 groups every 500 ms.
+    val tick by remember { QueryLog.version.sample(500) }.collectAsStateWithLifecycle(QueryLog.version.value)
+    val entries = remember(tick) { QueryLog.snapshot() }
     // Remember the row's key, not the Entry: the dialog then follows live counts while it's open.
     var selectedKey by remember { mutableStateOf<String?>(null) }
 
-    // Snapshot at most twice a second; see QueryLog for why we don't stream every entry.
-    LaunchedEffect(Unit) {
-        QueryLog.version.sample(500).collect { entries = QueryLog.snapshot() }
-    }
 
     // Derived, not stored: recomputed only when an input changes, never kept in sync by hand.
     val shown = remember(entries, filter, top, query) {
@@ -227,6 +228,12 @@ private fun DomainRow(e: QueryGroups.Entry, modifier: Modifier, onClick: () -> U
         modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
+            // The outcome is only a dot's colour on screen: say it. Replaces the children's
+            // "e", "name", "×12" with one line; the click action above is kept.
+            .clearAndSetSemantics {
+                contentDescription = "${e.name}, ${if (e.blocked) "blocked" else "allowed"}, ${e.count} " +
+                    if (e.count == 1) "lookup" else "lookups"
+            }
             .padding(start = 32.dp, end = 16.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -41,14 +41,25 @@ class DnsCache(
         return e.response
     }
 
+    /**
+     * Bumped by [clear]. Capture it when a query is sent and hand it back to [put]: an answer
+     * that was in flight across a clear() came from the old resolver and is dropped, not cached.
+     */
+    @get:Synchronized
+    var epoch = 0
+        private set
+
     @Synchronized
-    fun put(q: DnsQuestion, response: ByteArray) {
-        if (q.dnssec) return
+    fun put(q: DnsQuestion, response: ByteArray, epoch: Int = this.epoch) {
+        if (q.dnssec || epoch != this.epoch) return
         val ttl = DnsMessage.cacheTtlSeconds(response) ?: return
         map[key(q)] = Entry(response, clock() + ttl * 1_000_000_000L)
     }
 
     /** After a resolver switch: answers from the old one (e.g. unfiltered) mustn't outlive it. */
     @Synchronized
-    fun clear() = map.clear()
+    fun clear() {
+        map.clear()
+        epoch++
+    }
 }

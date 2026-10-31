@@ -18,13 +18,15 @@ fun isIpLiteral(s: String): Boolean {
     if (s.isEmpty() || s.length > 45) return false
     if (':' in s) {
         // Zone ids (%wlan0) are meaningless for a public resolver; OkHttp rejects them anyway.
-        if (s.any { !(it.isDigit() || it in 'a'..'f' || it in 'A'..'F' || it == ':' || it == '.') }) return false
+        if (s.any { !(it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' || it == ':' || it == '.') }) return false
         return "https://[$s]/".toHttpUrlOrNull() != null
     }
     val parts = s.split('.')
     return parts.size == 4 && parts.all { p ->
         // No leading zeros: "010" is octal to some parsers and decimal to others.
-        p.isNotEmpty() && p.length <= 3 && p.all(Char::isDigit) && (p == "0" || p[0] != '0') && p.toInt() <= 255
+        // ASCII only: Char.isDigit and toInt() also take Arabic-Indic digits ("١.١.١.١"), which
+        // InetAddress doesn't parse as a literal, so it would do a DNS lookup (and throw).
+        p.isNotEmpty() && p.length <= 3 && p.all { it in '0'..'9' } && (p == "0" || p[0] != '0') && p.toInt() <= 255
     }
 }
 

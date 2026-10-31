@@ -42,6 +42,10 @@ class PacketLoop(
     tun: ParcelFileDescriptor,
     private val doh: DohClient,
     private val connectivity: ConnectivityManager,
+    // Called on the reader thread if it exits without stop() asking it to. The tun is still
+    // established then, so every DNS query on the phone would vanish into it: the owner must
+    // tear the tunnel down.
+    private val onDied: (PacketLoop) -> Unit,
 ) {
     private val tunFd: FileDescriptor = tun.fileDescriptor
     private val output = FileOutputStream(tunFd)
@@ -71,10 +75,12 @@ class PacketLoop(
     private var cacheGeneration = doh.generation
     private var cacheDns = Modes.state.value.dns
     private val thread = Thread(::run, "wallupus-tun")
+    @Volatile private var stopping = false
 
     fun start() = thread.start()
 
     fun stop() {
+        stopping = true
         try {
             Os.write(wakeWrite, byteArrayOf(1), 0, 1)
         } catch (_: ErrnoException) {
@@ -86,6 +92,14 @@ class PacketLoop(
     }
 
     private fun run() {
+        try {
+            loop()
+        } finally {
+            if (!stopping) onDied(this)
+        }
+    }
+
+    private fun loop() {
         Filters.ensureLoaded() // never start answering with an empty matcher if a list exists
         // First run (including via Always-On VPN) or stale (>24h): trigger a background refresh
         // so daily-rotating DGA ad domains don't slip through. DNS-only mode doesn't need a list.
@@ -143,7 +157,8 @@ class PacketLoop(
         val mode = Modes.state.value
 
         // Resolver switched in Settings (or DoH turned on/off): cached answers came from the old
-        // one. Checked here rather than cleared from the UI thread so the cache keeps a single owner.
+        // one. Only this thread clears; answers still in flight carry the epoch they were sent
+        // under, and the cache drops them if a clear() happened in between.
         val gen = doh.generation
         if (gen != cacheGeneration || mode.dns != cacheDns) {
             cache.clear()
@@ -170,6 +185,7 @@ class PacketLoop(
             reply(udp, DnsMessage.servfail(udp.payload, q))
             return
         }
+        val epoch = cache.epoch
         scope.launch {
             try {
                 // RFC 8484 §4.1: send ID 0 so HTTP caches can share answers; restore it after.
@@ -177,7 +193,7 @@ class PacketLoop(
                 val zeroed = DnsMessage.withId(udp.payload, 0)
                 val resp = if (mode.dns) doh.resolve(zeroed) else plain.resolve(zeroed)
                 val answer = if (resp != null && DnsMessage.isResponseFor(resp, q)) {
-                    cache.put(q, resp)
+                    cache.put(q, resp, epoch)
                     DnsMessage.withId(resp, q.id)
                 } else {
                     DnsMessage.servfail(udp.payload, q)

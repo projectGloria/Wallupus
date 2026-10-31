@@ -55,7 +55,8 @@ object DnsMessage {
             if (labelLen and 0xC0 != 0) return null
             if (i + 1 + labelLen > msg.size) return null
             wireLen += labelLen + 1
-            if (wireLen > 255) return null // RFC 1035 name length limit
+            // RFC 1035: 255 octets including the root byte, which wireLen doesn't count yet.
+            if (wireLen > 254) return null
             if (name.isNotEmpty()) name.append('.')
             for (k in i + 1..i + labelLen) {
                 val c = msg[k].u8()
@@ -137,8 +138,10 @@ object DnsMessage {
     /** Cheap sanity check on an upstream answer before we hand it to a client (and cache it). */
     fun isResponseFor(msg: ByteArray, q: DnsQuestion): Boolean {
         if (msg.size < HEADER) return false
-        if (u16(msg, 2) and 0x8000 == 0) return false
-        if (u16(msg, 4) < 1) return false
+        val flags = u16(msg, 2)
+        if (flags and 0x8000 == 0) return false         // QR=0: not a response
+        if ((flags ushr 11) and 0x0F != 0) return false // opcode != QUERY
+        if (u16(msg, 4) != 1) return false              // we asked exactly one question
         val sb = StringBuilder()
         var i = HEADER
         while (true) {
@@ -155,6 +158,13 @@ object DnsMessage {
         if (i + 4 > msg.size) return false
         return sb.toString().equals(q.name, ignoreCase = true) &&
             u16(msg, i) == q.qtype && u16(msg, i + 2) == q.qclass
+    }
+
+    /** NOERROR, not truncated, at least one answer record: what a resolver test must get back. */
+    fun isUsableAnswer(msg: ByteArray): Boolean {
+        if (msg.size < HEADER) return false
+        val flags = u16(msg, 2)
+        return flags and 0x0F == RCODE_NOERROR && flags and 0x0200 == 0 && u16(msg, 6) > 0
     }
 
     /**

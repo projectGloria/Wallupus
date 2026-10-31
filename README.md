@@ -1,8 +1,8 @@
 # Wallupus
 
-A DNS-only ad and tracker blocker for Android 10+. About 1,900 lines of Kotlin, roughly a third of it comments, that you can read in an evening.
+A DNS-only ad and tracker blocker for Android 10+. About 4,800 lines of Kotlin, commented throughout, small enough to read in a weekend.
 
-- **Captures DNS and nothing else.** The local VPN routes only two fake resolver addresses into the app. All other traffic never touches it.
+- **Captures DNS and nothing else.** The local VPN routes only its two fake resolver addresses into the app, plus the IPs of the big public resolvers (8.8.8.8, 1.1.1.1, …) so apps can't skip around it. All other traffic never touches it.
 - **Encrypted upstream, your pick.** Allowed lookups go over DNS-over-HTTPS to the resolver chosen under **Settings**: Quad9 (default), Cloudflare, Cloudflare Security, Mullvad, Mullvad Base, AdGuard, Google, or any DoH URL of your own. Pinned bootstrap IPs mean your ISP never sees even the resolver's name. A resolver is only switched to after a live test query succeeds.
 - **Lists compiled on the phone.** No server of ours, no telemetry, no crash reporter, no TLS interception.
 - **Nothing leaves the device.** Backups and device-to-device transfer are disabled for every data domain. The query log lives in RAM only. It groups repeats into one row with a count, and names the app that asked.
@@ -61,7 +61,7 @@ Back the keystore up somewhere offline. Android only installs updates signed wit
 
 ### Automatic releases (GitHub Actions)
 
-Every push to `main` runs `.github/workflows/release.yml`: tests, a signed release APK, and a GitHub Release tagged `v0.1.<commit count>`. The version is the commit count (`app/build.gradle.kts`), so it goes up by itself; the Home screen shows it under **App**.
+Every push to `main` runs `.github/workflows/release.yml`: tests, a signed release APK, and a GitHub Release tagged `v0.1.<commit count>`. The version is the commit count (`app/build.gradle.kts`), so it goes up by itself; the Lists tab shows it under **App**.
 
 One-time setup, in PowerShell from the folder holding your keystore:
 
@@ -78,7 +78,7 @@ Debug builds install as **Wallupus Dev** (`dev.wallupus.debug`) next to the rele
 
 ### Updating the app
 
-Home → **App** → **Check for update** asks the GitHub API for the latest release (nothing is checked in the background). **Install update** downloads the APK and opens Android's installer. The first time, Android asks you to allow Wallupus to install apps. Android refuses any APK not signed with your key, which is what keeps a tampered download out. Remove `updates` from `config.json` to drop the updater (F-Droid builds must).
+Lists → **App** → **Check for update** asks the GitHub API for the latest release (nothing is checked in the background). **Install update** downloads the APK and opens Android's installer. The first time, Android asks you to allow Wallupus to install apps. Android refuses any APK not signed with your key, which is what keeps a tampered download out. Remove `updates` from `config.json` to drop the updater (F-Droid builds must).
 
 ## First run
 
@@ -107,14 +107,14 @@ To show which app made each lookup, Wallupus asks the kernel for the owning UID 
 | `dns/Resolvers.kt` | The active resolver choice (preset or custom), persisted and pushed into the DoH client |
 | `dns/PlainDnsClient.kt` | Plain UDP to the real network's DNS servers, for blocking with encrypted DNS off |
 | `dns/CustomUpstream.kt` | Custom DoH URL / bootstrap-IP validation and the test query |
-| `dns/DnsCache.kt` | 512-entry TTL-respecting LRU |
+| `dns/DnsCache.kt` | 512-entry LRU; expires on the answer's TTL but replays it unaged |
 | `filter/ListParser.kt` | hosts / plain domains / `\|\|domain^` + `@@` exceptions; everything else skipped |
 | `filter/DomainMatcher.kt` | Sorted 64-bit hash arrays + zero-alloc suffix walk; user rules beat lists |
 | `filter/CompiledLists.kt` | On-disk format, atomic writes, corrupt file → empty, never a crash |
 | `filter/BlocklistUpdater.kt` | Conditional GETs, 64 MB cap, stale-cache fallback, refuses near-empty results |
 | `filter/SourceCheck.kt` | Per-source check before a download replaces its cached copy (rejects error pages and >75% shrinks) |
 | `filter/RuleTargets.kt` | Rule-dialog choices, capped at the registrable domain via OkHttp's bundled Public Suffix List |
-| `filter/UpdateWorker.kt` | Daily on Wi-Fi + battery OK (plus on VPN start when stale); "Update now" on any network |
+| `filter/UpdateWorker.kt` | Daily on an unmetered network + battery OK; on VPN start when stale and "Update now", any network |
 | `log/QueryGroups.kt` | RAM-only log grouped by (app, name, outcome): count, first/last seen, query types |
 | `log/AppGroups.kt` | Folds the log into per-app sections for the Log screen; domain monogram letter/colour |
 | `ui/AppLabels.kt` | UID → app name + icon, cached in memory |
@@ -127,7 +127,8 @@ To show which app made each lookup, Wallupus asks the kernel for the owning UID 
 These are inherent to DNS blocking:
 
 - **Same-domain ads** aren't blocked: YouTube, Instagram and Reddit promoted posts.
-- **Hardcoded DoH by IP** is only caught for the big public resolvers whose IPs are trapped in `WallupusVpnService`. `doh-bypass.txt` covers hostname-based DoH.
+- **Hardcoded DoH by IP** is only caught for the big public resolvers whose IPs are trapped in `WallupusVpnService` (plus every preset's IPs). Hardcoded *plain* DNS to any other server bypasses it too. `doh-bypass.txt` covers hostname-based DoH.
 - **Log counts are lookups that reached Wallupus**, not requests an app made. Android caches answers itself, so a repeat inside the TTL never shows up. An app's name is missing ("Unknown app") if its socket closed before the kernel lookup.
+- **Trapped resolver IPs answer DNS only.** While Wallupus runs, `ping 8.8.8.8` / `1.1.1.1` and any non-DNS connection to those addresses fail. Test connectivity against something else.
 - **Android's single VPN slot.** Wallupus can't run alongside another VPN.
 - **The app's own lookups** for list hosts like raw.githubusercontent.com go through the network's normal resolver. Those names are public and identical for every user.

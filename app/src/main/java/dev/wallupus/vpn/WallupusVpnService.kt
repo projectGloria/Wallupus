@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.VpnService
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import dev.wallupus.WallupusApp
@@ -20,14 +22,15 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * A "VPN" that only captures DNS.
  *
- * We advertise a fake resolver address and route *only that address* into the tunnel. Every
- * other packet on the phone uses the real network as if we didn't exist — so there's no
- * userspace TCP stack, no throughput cost, and nothing to break for non-DNS traffic.
+ * We advertise a fake resolver address and route *only that address* (plus the trapped public
+ * resolver IPs below) into the tunnel. Every other packet on the phone uses the real network as
+ * if we didn't exist — so there's no userspace TCP stack and no throughput cost.
  */
 class WallupusVpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
     private var loop: PacketLoop? = null
     private var flusher: Job? = null
+    private val main = Handler(Looper.getMainLooper())
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
@@ -72,8 +75,12 @@ class WallupusVpnService : VpnService() {
             // table) and apps with hardcoded 8.8.8.8 / 1.1.1.1 otherwise bypass system DNS by IP.
             // Plain UDP/53 to these IPs gets filtered and answered by PacketLoop; TCP/443 (DoH)
             // and TCP/853 (DoT) get an immediate TCP RST so the client falls back to DNS_V4/V6.
-            TRAP_V4.forEach { builder.addRoute(it, 32) }
-            TRAP_V6.forEach { builder.addRoute(it, 128) }
+            // Plus every preset's bootstrap IPs, so the list can't drift from config.json (we're
+            // excluded from our own VPN, so our DoH to them still goes out directly).
+            val presets = WallupusApp.config.resolvers.flatMap { r -> r.upstreams.flatMap { it.bootstrap } }
+            (TRAP_V4.asList() + TRAP_V6 + presets).distinct().forEach { ip ->
+                builder.addRoute(ip, if (':' in ip) 128 else 32)
+            }
             builder.establish() // null = user revoked consent (VpnService.prepare() needed again)
         } catch (e: Exception) {
             // IllegalStateException (not prepared) / SecurityException / bad config.
@@ -85,7 +92,10 @@ class WallupusVpnService : VpnService() {
             return
         }
         tun = pfd
-        loop = PacketLoop(pfd, WallupusApp.doh, getSystemService(ConnectivityManager::class.java)).also { it.start() }
+        loop = PacketLoop(pfd, WallupusApp.doh, getSystemService(ConnectivityManager::class.java)) { dead ->
+            // Off the dying reader thread: shutdown() joins that thread.
+            main.post { onLoopDied(dead) }
+        }.also { it.start() }
         flusher = WallupusApp.appScope.launch {
             while (true) {
                 delay(LIFETIME_FLUSH_MS)
@@ -115,6 +125,18 @@ class WallupusVpnService : VpnService() {
             QueryLog.resetSession()
         }
         _running.value = false
+    }
+
+    /**
+     * The reader thread exited on its own (unexpected poll/read error). A tunnel nobody reads is
+     * worse than no tunnel, it swallows all DNS, so drop it and let the phone resolve normally.
+     */
+    @Synchronized
+    private fun onLoopDied(dead: PacketLoop) {
+        if (loop !== dead) return // already stopped (revoke, user stop) or replaced
+        Log.w(TAG, "packet loop died; stopping the tunnel")
+        shutdown()
+        stopSelf()
     }
 
     /** Another VPN app took over, or the user disconnected from Settings. */
@@ -154,8 +176,9 @@ class WallupusVpnService : VpnService() {
             "2a10:50c0::ad1:ff", "2a10:50c0::ad2:ff",
         )
 
-        // The tun is local-only, so a large MTU costs nothing and means big DNS answers
-        // (DNSSEC, long TXT/HTTPS records) never get truncated → no TCP fallback to implement.
+        // The tun is local-only, so a large MTU costs nothing and DoH answers (DNSSEC, long
+        // TXT/HTTPS records) reach the client whole. It can't undo an upstream TC bit in plain
+        // mode, though: TCP to us gets a RST (see PlainDnsClient).
         const val MTU = 16_384
 
         // At most a minute of counts lost if the process is killed; one small prefs write a minute.

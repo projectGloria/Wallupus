@@ -46,7 +46,9 @@ class QueryGroups(private val capacity: Int, private val clock: () -> Long = Sys
         val g = groups[key] ?: Group(uid, name, blocked, now).also { groups[key] = it }
         g.count++
         g.lastMillis = now
-        if (qtype !in g.qtypes) g.qtypes += qtype
+        // Capped: real names see 2–3 types, and an app cycling through all 65,536 would otherwise
+        // grow this list and its linear scan on the reader thread without bound.
+        if (g.qtypes.size < MAX_QTYPES && qtype !in g.qtypes) g.qtypes += qtype
     }
 
     /** Most recently seen first. */
@@ -62,6 +64,8 @@ class QueryGroups(private val capacity: Int, private val clock: () -> Long = Sys
     fun clear() = groups.clear()
 
     private companion object {
+        const val MAX_QTYPES = 8
+
         fun key(uid: Int, name: String, blocked: Boolean) = "$uid|" + (if (blocked) "b:" else "a:") + name
     }
 }

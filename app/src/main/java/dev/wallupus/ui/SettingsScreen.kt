@@ -294,7 +294,7 @@ private fun CustomForm(
             shape = RoundedCornerShape(14.dp),
         )
         Text(
-            "Without IPs, the server's own name is looked up once over your network's plain DNS.",
+            "Without IPs, the server's own name is looked up over your network's plain DNS whenever a new connection is made.",
             Modifier.padding(top = 4.dp),
             style = MaterialTheme.typography.bodySmall,
             color = Palette.TextLo,

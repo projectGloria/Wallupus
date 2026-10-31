@@ -62,9 +62,20 @@ class Config(
             // A hostname here would make InetAddress.getByName do the very plain-text lookup that
             // bootstrap IPs exist to avoid.
             require(upstreams.all { u -> u.bootstrap.all(::isIpLiteral) }) { "config.json: bootstrap entries must be IP literals" }
+            // Empty is only for the user's custom URL; a preset without IPs would quietly fall
+            // back to looking its own hostname up in plain text.
+            require(upstreams.all { it.bootstrap.isNotEmpty() }) { "config.json: every upstream needs bootstrap IPs" }
             val defaultResolver = resolvers.firstOrNull { it.id == root.optString("defaultResolver") }
                 ?: error("config.json: defaultResolver must name a resolver")
             require(sources.map { it.id }.toSet().size == sources.size) { "config.json: duplicate source id" }
+            // A plain-http list could be rewritten in transit into "block nothing" or "block your bank".
+            require(sources.all { it.url.startsWith("https://") || it.url.startsWith("asset://") }) {
+                "config.json: sources must be https:// or asset://"
+            }
+            // The id becomes a file name under filesDir/sources/: no separators, no "..".
+            require(sources.all { s -> s.id.isNotEmpty() && s.id.all { it.isLetterOrDigit() || it == '-' || it == '_' } }) {
+                "config.json: source ids may only use letters, digits, '-' and '_'"
+            }
             val updates = root.optString("updates").takeIf { it.isNotEmpty() }
             require(updates == null || updates.startsWith("https://")) { "config.json: updates must be https://" }
             return Config(resolvers, defaultResolver, sources, updates)

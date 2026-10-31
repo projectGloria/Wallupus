@@ -133,4 +133,44 @@ class DnsMessageTest {
         assertNull(cache.get(qDo)) // plain answer has no RRSIGs: never serve it to a DO client
         assertTrue(cache.get(qPlain) != null)
     }
+
+    @Test fun answerInFlightAcrossClearIsNotCached() {
+        val cache = DnsCache(clock = { 0L })
+        val query = TestPackets.dnsQuery("x.com")
+        val q = DnsMessage.parseQuery(query)!!
+        val sent = cache.epoch // query goes upstream to the old resolver…
+        cache.clear()          // …the resolver switches before it answers
+        cache.put(q, DnsMessage.blockedResponse(query, q), sent)
+        assertNull(cache.get(q))
+        cache.put(q, DnsMessage.blockedResponse(query, q), cache.epoch)
+        assertTrue(cache.get(q) != null)
+    }
+
+    @Test fun probeNeedsAUsableAnswerAndResponsesNeedOneQuestion() {
+        val answer = TestPackets.hex(
+            "0000 8180 0001 0001 0000 0000" +
+                "07 6578616d706c65 03 636f6d 00 0001 0001" +
+                "c00c 0001 0001 0000012c 0004 5db8d822",
+        )
+        val q = DnsMessage.parseQuery(probeQuery())!!
+        assertTrue(DnsMessage.isResponseFor(answer, q))
+        assertTrue(DnsMessage.isUsableAnswer(answer))
+
+        val servfail = answer.copyOf().also { it[3] = 0x82.toByte() }
+        assertTrue(DnsMessage.isResponseFor(servfail, q)) // matches the question…
+        assertFalse(DnsMessage.isUsableAnswer(servfail))   // …but must not pass a resolver test
+        assertFalse(DnsMessage.isUsableAnswer(answer.copyOf().also { it[2] = 0x83.toByte() })) // TC
+        assertFalse(DnsMessage.isUsableAnswer(answer.copyOf().also { it[7] = 0 }))             // no answers
+
+        assertFalse(DnsMessage.isResponseFor(answer.copyOf().also { it[5] = 2 }, q))                // QDCOUNT=2
+        assertFalse(DnsMessage.isResponseFor(answer.copyOf().also { it[2] = 0x89.toByte() }, q))    // opcode 1
+    }
+
+    @Test fun nameLengthLimitCountsTheRootLabel() {
+        // RFC 1035 §2.3.4: 255 wire octets including the root byte = 253 presentation chars.
+        fun name(last: Int) = listOf("a".repeat(63), "b".repeat(63), "c".repeat(63), "d".repeat(last)).joinToString(".")
+        assertEquals(253, name(61).length)
+        assertTrue(DnsMessage.parseQuery(TestPackets.dnsQuery(name(61))) != null)
+        assertNull(DnsMessage.parseQuery(TestPackets.dnsQuery(name(62))))
+    }
 }

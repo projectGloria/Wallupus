@@ -26,11 +26,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,16 +59,12 @@ fun HomeScreen(connecting: Boolean, onToggle: (Boolean) -> Unit, onDnsToggle: (B
     val resolverId by Resolvers.selected.collectAsStateWithLifecycle()
 
     // Sample the log's version counter at 2 Hz: at 50 queries/s, recomposing per query would
-    // burn more CPU drawing numbers than resolving DNS.
-    var counts by remember { mutableStateOf(readCounts()) }
-    // Keyed on running too: stopping moves the session counts into prefs and zeroes them
-    // without bumping version, so without a restart here the card would show stale numbers.
-    LaunchedEffect(running) {
-        counts = readCounts()
-        QueryLog.version.sample(500).collect {
-            counts = readCounts()
-        }
-    }
+    // burn more CPU drawing numbers than resolving DNS. WithLifecycle: a plain LaunchedEffect
+    // keeps collecting after ON_STOP (Compose only pauses recomposition, not coroutines).
+    val tick by remember { QueryLog.version.sample(500) }.collectAsStateWithLifecycle(QueryLog.version.value)
+    // Derived from the tick, not pushed into state. Keyed on running too: stopping moves the
+    // session counts into prefs and zeroes them without bumping version.
+    val counts = remember(tick, running) { readCounts() }
 
     // Re-checked whenever the toggle changes; cheap binder calls, no need for a callback.
     val strictPrivateDns = remember(running) { strictPrivateDnsHost(ctx) }
@@ -97,7 +90,7 @@ fun HomeScreen(connecting: Boolean, onToggle: (Boolean) -> Unit, onDnsToggle: (B
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                StatusChip(state)
+                StatusChip(state, dnsOnly = running && mode.dns && !mode.blocking)
                 BlockButton(state, counts.sessionBlocked, onToggle)
                 DnsLine(resolverId, active = running && mode.dns, onDnsToggle)
             }

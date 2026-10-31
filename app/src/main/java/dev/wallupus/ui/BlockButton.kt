@@ -244,11 +244,14 @@ fun BlockButton(
     }
 }
 
-/** "● PROTECTED"-style pill above the button; the dot breathes while blocking. */
+/**
+ * "● PROTECTED"-style pill above the button; the dot breathes while blocking. [dnsOnly]: the
+ * tunnel is up for encrypted DNS alone, so "not protected" would read as "nothing is running".
+ */
 @Composable
-fun StatusChip(state: BlockState, modifier: Modifier = Modifier) {
+fun StatusChip(state: BlockState, dnsOnly: Boolean, modifier: Modifier = Modifier) {
     val (text, target) = when (state) {
-        BlockState.Off -> "NOT PROTECTED" to Palette.TextLo
+        BlockState.Off -> (if (dnsOnly) "ENCRYPTED DNS ONLY" else "NOT PROTECTED") to Palette.TextLo
         BlockState.Connecting -> "CONNECTING" to Palette.Amber
         BlockState.On -> "PROTECTED" to Palette.Crimson
     }

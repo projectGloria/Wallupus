@@ -108,6 +108,28 @@ class FilterTest {
         }
     }
 
+    @Test fun compiledReaderRejectsLyingHeadersAndUnsortedArrays() {
+        val f = File.createTempFile("wallupus", ".bin")
+        try {
+            CompiledLists(longArrayOf(1, 2, 3), longArrayOf()).writeTo(f)
+            val good = f.readBytes()
+            assertEquals(3, CompiledLists.readOrEmpty(f).block.size)
+
+            // Header claims 5M block entries in a 40-byte file: rejected before allocating.
+            f.writeBytes(good.copyOf().also { it[8] = 0x00; it[9] = 0x4C; it[10] = 0x4B; it[11] = 0x40 })
+            assertEquals(0, CompiledLists.readOrEmpty(f).block.size)
+
+            f.writeBytes(good + byteArrayOf(0)) // trailing junk
+            assertEquals(0, CompiledLists.readOrEmpty(f).block.size)
+
+            // Out of order: binary search would silently miss, so it counts as corrupt.
+            CompiledLists(longArrayOf(3, 1, 2), longArrayOf()).writeTo(f)
+            assertEquals(0, CompiledLists.readOrEmpty(f).block.size)
+        } finally {
+            f.delete()
+        }
+    }
+
     // A captive portal / CDN error page served with HTTP 200 must never replace a cached list.
     @Test fun sourceCheckRejectsErrorPagesAndCollapses() {
         val html = """

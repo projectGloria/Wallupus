@@ -37,15 +37,21 @@ class PlainDnsClient(private val connectivity: ConnectivityManager) {
             try {
                 DatagramSocket().use { socket ->
                     network.bindSocket(socket)
-                    socket.soTimeout = TIMEOUT_MS
-                    val to = InetSocketAddress(server, 53)
-                    socket.send(DatagramPacket(out, out.size, to))
+                    // Connected: the kernel drops datagrams from any other address *or port*,
+                    // so only server:53 can answer.
+                    socket.connect(InetSocketAddress(server, 53))
+                    socket.send(DatagramPacket(out, out.size))
                     val buf = ByteArray(MAX_UDP)
+                    // One deadline for the whole turn: soTimeout restarts on every receive, so
+                    // a stream of wrong-ID packets would otherwise hold this worker forever.
+                    val deadline = System.nanoTime() + TIMEOUT_MS * 1_000_000L
                     while (true) {
+                        val left = (deadline - System.nanoTime()) / 1_000_000
+                        if (left <= 0) break
+                        socket.soTimeout = left.toInt()
                         val p = DatagramPacket(buf, buf.size)
                         socket.receive(p) // SocketTimeoutException ends this server's turn
-                        // Drop stray packets from anyone but the server, or with the wrong ID.
-                        if (p.address != server || p.length < 12 || u16(buf, 0) != id) continue
+                        if (p.length < 12 || u16(buf, 0) != id) continue // stray or spoofed
                         return buf.copyOf(p.length)
                     }
                 }

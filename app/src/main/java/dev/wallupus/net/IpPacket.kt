@@ -15,8 +15,8 @@ class UdpPacket(
 /**
  * Minimal IPv4/IPv6 + UDP codec for packets arriving on the tun interface.
  *
- * We only ever route two fake DNS addresses into the tunnel, so anything that isn't a plain,
- * unfragmented UDP datagram is dropped rather than handled. Being strict here is the security
+ * We only route the fake DNS addresses and the trapped resolver IPs into the tunnel, so anything
+ * that isn't a plain, unfragmented UDP datagram is dropped (or, for TCP, reset) rather than handled. Being strict here is the security
  * boundary: every byte comes from another app on the phone and must be treated as hostile.
  */
 object IpPacket {

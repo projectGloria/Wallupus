@@ -77,14 +77,24 @@ object BlocklistUpdater {
             return finish(false, "No list could be downloaded: ${failed.joinToString()}")
         }
 
-        val compiled = CompiledLists.build(usable.asSequence().map { it() })
+        // Disk full, a cached source vanishing, or a list past the rule cap: the installed file and
+        // matcher are untouched until writeTo's rename, so report it and keep what we have.
+        val compiled = try {
+            CompiledLists.build(usable.asSequence().map { it() })
+        } catch (e: IOException) {
+            return finish(false, "Couldn't compile lists (${e.message}) — keeping previous lists")
+        }
         // A list host returning an HTML error page with HTTP 200 parses to ~0 domains.
         // Swapping that in would silently disable blocking — refuse it.
         if (remoteEnabled > 0 && compiled.block.size < 1_000) {
             return finish(false, "Compiled only ${compiled.block.size} domains — keeping previous lists")
         }
 
-        compiled.writeTo(Filters.file())
+        try {
+            compiled.writeTo(Filters.file())
+        } catch (e: IOException) {
+            return finish(false, "Couldn't save lists (${e.message}) — keeping previous lists")
+        }
         Filters.install(compiled)
         prefs.lastUpdateMillis = System.currentTimeMillis()
         return finish(true, if (failed.isEmpty()) null else "Used cached copy of: ${failed.joinToString()}")

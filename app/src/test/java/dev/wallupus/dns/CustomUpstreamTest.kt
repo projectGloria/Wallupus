@@ -12,7 +12,8 @@ class CustomUpstreamTest {
             assertTrue(it, isIpLiteral(it))
         }
         listOf("", "dns.quad9.net", "1.2.3", "1.2.3.4.5", "256.1.1.1", "010.0.0.1", "1.2.3.-4",
-            "fe80::1%wlan0", "2620:fe::fe::1", "gggg::1", "localhost").forEach {
+            "fe80::1%wlan0", "2620:fe::fe::1", "gggg::1", "localhost",
+            "١.١.١.١", "۹.۹.۹.۹", "١::1").forEach { // Arabic/Persian digits
             assertFalse(it, isIpLiteral(it))
         }
     }

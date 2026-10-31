@@ -1,6 +1,7 @@
 package dev.wallupus.ui
 
 import android.net.VpnService
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -12,6 +13,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.CompositionLocalProvider
@@ -55,19 +57,31 @@ class MainActivity : ComponentActivity() {
     }
 
     // The switch state waiting on the consent dialog. Plain field: it only bridges request() and
-    // the result callback, nothing renders it.
+    // the result callback, nothing renders it. Saved across recreation (two booleans, nothing
+    // sensitive): rotating under the dialog would otherwise start the tunnel in the old mode.
     private var pending: Modes.Mode? = null
 
     // Tap-to-running gap (consent dialog + establish()). Snapshot state on the Activity, not in
     // composition, because toggle() and the consent callback live out here.
     private var connecting by mutableStateOf(false)
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        pending?.let { outState.putBooleanArray(PENDING, booleanArrayOf(it.blocking, it.dns)) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Restored before the consent result is delivered (that waits for onStart).
+        // (The spinner isn't restored: LaunchedEffect(running) clears it on first composition.)
+        savedInstanceState?.getBooleanArray(PENDING)?.let { pending = Modes.Mode(it[0], it[1]) }
         // Explicit dark bar style: the default (auto) follows the *system* theme, which would put
         // dark icons on our always-dark UI whenever the phone is in light mode.
         val bars = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
+        // The Recents thumbnail is a screenshot written to disk by the system; from the Log tab
+        // that's a picture of your query history. Blank card instead; your own screenshots still work.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(false)
         setContent {
             WallupusTheme {
                 var tab by rememberSaveable { mutableIntStateOf(0) }
@@ -83,7 +97,9 @@ class MainActivity : ComponentActivity() {
                         connecting = false
                     }
                 }
-                val aura by animateFloatAsState(if (running) 1f else 0f, tween(900), label = "aura")
+                // Same condition as BlockState.On: the tunnel also runs for DNS alone, and a crimson
+                // glow behind a grey "not blocking" button would contradict it.
+                val aura by animateFloatAsState(if (running && mode.blocking) 1f else 0f, tween(900), label = "aura")
                 Column(
                     Modifier
                         .fillMaxSize()
@@ -100,7 +116,10 @@ class MainActivity : ComponentActivity() {
                                 center = c,
                             )
                         }
-                        .systemBarsPadding(),
+                        .systemBarsPadding()
+                        // Edge-to-edge windows don't resize for the keyboard: without this it
+                        // covers the lower fields of Settings → Custom.
+                        .imePadding(),
                 ) {
                     // Scaffold's Surface used to provide this. Without it, any Text with no explicit
                     // colour falls back to LocalContentColor's default: black on our black.
@@ -168,5 +187,6 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val CONNECT_TIMEOUT_MS = 8_000L
+        const val PENDING = "pendingMode"
     }
 }
