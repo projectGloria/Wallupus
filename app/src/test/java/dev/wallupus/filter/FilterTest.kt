@@ -102,4 +102,30 @@ class FilterTest {
             f.delete()
         }
     }
+
+    // A captive portal / CDN error page served with HTTP 200 must never replace a cached list.
+    @Test fun sourceCheckRejectsErrorPagesAndCollapses() {
+        val html = """
+            <!DOCTYPE html>
+            <html><head><title>Sign in to Free_WiFi</title></head>
+            <body><p>Please accept the terms to continue.</p></body></html>
+        """.trimIndent()
+        assertEquals(0, SourceCheck.countRules(html.reader()))
+        assertFalse(SourceCheck.accept(0, null))
+        assertFalse(SourceCheck.accept(0, 130_000))
+
+        val list = """
+            # header
+            0.0.0.0 a.com
+            ||b.com^
+            @@||ok.b.com^
+            example.com##.banner
+        """.trimIndent()
+        assertEquals(3, SourceCheck.countRules(list.reader()))
+
+        assertTrue(SourceCheck.accept(3, null))           // first download: anything real goes
+        assertTrue(SourceCheck.accept(120_000, 130_000))  // normal weekly churn
+        assertTrue(SourceCheck.accept(32_500, 130_000))   // exactly a quarter is still accepted
+        assertFalse(SourceCheck.accept(32_499, 130_000))  // collapsed: keep the cached copy
+    }
 }

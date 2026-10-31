@@ -10,6 +10,8 @@ import kotlinx.coroutines.withContext
 import okhttp3.Request
 import java.io.File
 import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.concurrent.TimeUnit
 
 /**
@@ -130,7 +132,19 @@ object BlocklistUpdater {
                     }
                 }
             }
-            if (!tmp.renameTo(dest)) {
+            // HTTP 200 only says the server answered. Before the download replaces the cached
+            // copy (and before its validators are saved), check that it's actually a list.
+            // Re-counting the cached copy costs one parse, and only when the source really changed.
+            val fresh = tmp.reader().use(SourceCheck::countRules)
+            val previous = if (dest.exists()) dest.reader().use(SourceCheck::countRules) else null
+            if (!SourceCheck.accept(fresh, previous)) {
+                tmp.delete()
+                return false
+            }
+            // Files.move for parity with CompiledLists (File.renameTo can't replace on a Windows JVM).
+            try {
+                Files.move(tmp.toPath(), dest.toPath(), StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: IOException) {
                 tmp.delete()
                 return false
             }

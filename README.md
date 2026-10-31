@@ -81,6 +81,7 @@ Edit `app/src/main/assets/config.json` and rebuild. It holds the upstreams with 
 | `filter/DomainMatcher.kt` | Sorted 64-bit hash arrays + suffix walk; user rules beat lists |
 | `filter/CompiledLists.kt` | On-disk format, atomic writes, corrupt file → empty, never a crash |
 | `filter/BlocklistUpdater.kt` | Conditional GETs, 64 MB cap, stale-cache fallback, refuses near-empty results |
+| `filter/SourceCheck.kt` | Per-source check before a download replaces its cached copy (rejects error pages and >75% shrinks) |
 | `filter/UpdateWorker.kt` | Weekly on Wi-Fi + battery OK; "Update now" on any network |
 
 ## Known limits
