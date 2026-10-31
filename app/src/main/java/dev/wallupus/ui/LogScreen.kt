@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -28,9 +29,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import dev.wallupus.filter.Filters
+import dev.wallupus.filter.ruleTargets
 import dev.wallupus.log.QueryLog
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.sample
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -99,13 +103,12 @@ fun LogScreen() {
  */
 @Composable
 private fun RuleDialog(entry: QueryLog.Entry, onDismiss: () -> Unit) {
-    val suffixes = remember(entry.name) {
-        val labels = entry.name.split('.')
-        // Single-label names (wpad, search-domain lookups) have no parents; fall back to the
-        // name itself rather than crashing on an empty list. setUserRule ignores invalid names.
-        (0 until labels.size - 1).map { labels.drop(it).joinToString(".") }.ifEmpty { listOf(entry.name) }
+    // null = still loading the public suffix list (first use only; it's a disk read, so off main).
+    val suffixes by produceState<List<String>?>(null, entry.name) {
+        value = withContext(Dispatchers.IO) { ruleTargets(entry.name) }
     }
-    var target by remember { mutableStateOf(suffixes.first()) }
+    var picked by remember { mutableStateOf<String?>(null) }
+    val target = picked ?: suffixes?.firstOrNull()
     val existing = remember(entry.name) { Filters.matcher.get().userRuleFor(entry.name) }
 
     AlertDialog(
@@ -116,13 +119,19 @@ private fun RuleDialog(entry: QueryLog.Entry, onDismiss: () -> Unit) {
                 existing?.let { (domain, allow) ->
                     Text("Your rule: ${if (allow) "allow" else "block"} $domain", Modifier.padding(bottom = 8.dp))
                 }
+                val choices = suffixes ?: return@Column
+                if (choices.isEmpty()) {
+                    // wpad, router, search-domain lookups: nothing a rule could ever match.
+                    Text("Local name, can't be filtered.", color = Palette.TextLo)
+                    return@Column
+                }
                 Text("Apply to:", style = MaterialTheme.typography.labelLarge)
-                suffixes.forEach { s ->
+                choices.forEach { s ->
                     Row(
-                        Modifier.fillMaxWidth().selectable(selected = target == s, onClick = { target = s }),
+                        Modifier.fillMaxWidth().selectable(selected = target == s, onClick = { picked = s }),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        RadioButton(selected = target == s, onClick = { target = s })
+                        RadioButton(selected = target == s, onClick = { picked = s })
                         Text(s, fontFamily = FontFamily.Monospace)
                     }
                 }
@@ -133,8 +142,11 @@ private fun RuleDialog(entry: QueryLog.Entry, onDismiss: () -> Unit) {
                 existing?.let { (domain, _) ->
                     TextButton(onClick = { Filters.setUserRule(domain, null); onDismiss() }) { Text("Remove rule") }
                 }
-                TextButton(onClick = { Filters.setUserRule(target, false); onDismiss() }) { Text("Block") }
-                TextButton(onClick = { Filters.setUserRule(target, true); onDismiss() }) { Text("Allow") }
+                // No target = loading or unfilterable: hide the buttons rather than offer a no-op.
+                target?.let { t ->
+                    TextButton(onClick = { Filters.setUserRule(t, false); onDismiss() }) { Text("Block") }
+                    TextButton(onClick = { Filters.setUserRule(t, true); onDismiss() }) { Text("Allow") }
+                }
             }
         },
     )

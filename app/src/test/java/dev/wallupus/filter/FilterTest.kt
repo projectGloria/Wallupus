@@ -128,4 +128,16 @@ class FilterTest {
         assertTrue(SourceCheck.accept(32_500, 130_000))   // exactly a quarter is still accepted
         assertFalse(SourceCheck.accept(32_499, 130_000))  // collapsed: keep the cached copy
     }
+
+    // The log's rule dialog must never offer a public suffix like co.uk as a target.
+    @Test fun ruleTargetsStopAtRegistrableDomain() {
+        assertEquals(listOf("metrics.bbc.co.uk", "bbc.co.uk"), ruleTargets("metrics.bbc.co.uk"))
+        assertEquals(listOf("cdn.ads.example.com", "ads.example.com", "example.com"), ruleTargets("cdn.ads.example.com"))
+        assertEquals(listOf("example.com"), ruleTargets("example.com"))
+        assertEquals(listOf("user.github.io"), ruleTargets("user.github.io"))
+        assertEquals(listOf("_dmarc.example.com", "example.com"), ruleTargets("_dmarc.example.com"))
+        assertEquals(emptyList<String>(), ruleTargets("co.uk"))
+        assertEquals(emptyList<String>(), ruleTargets("wpad"))
+        assertEquals(emptyList<String>(), ruleTargets("10.0.0.1"))
+    }
 }

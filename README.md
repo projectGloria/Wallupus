@@ -82,6 +82,7 @@ Edit `app/src/main/assets/config.json` and rebuild. It holds the upstreams with 
 | `filter/CompiledLists.kt` | On-disk format, atomic writes, corrupt file → empty, never a crash |
 | `filter/BlocklistUpdater.kt` | Conditional GETs, 64 MB cap, stale-cache fallback, refuses near-empty results |
 | `filter/SourceCheck.kt` | Per-source check before a download replaces its cached copy (rejects error pages and >75% shrinks) |
+| `filter/RuleTargets.kt` | Rule-dialog choices, capped at the registrable domain via OkHttp's bundled Public Suffix List |
 | `filter/UpdateWorker.kt` | Weekly on Wi-Fi + battery OK; "Update now" on any network |
 
 ## Known limits
