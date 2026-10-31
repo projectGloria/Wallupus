@@ -13,6 +13,8 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.concurrent.TimeUnit
 
 /**
@@ -149,9 +151,11 @@ object AppUpdater {
                 throw IOException("got $total of ${release.size} bytes")
             }
         }
-        if (!tmp.renameTo(dest)) {
+        try {
+            Files.move(tmp.toPath(), dest.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        } catch (e: IOException) {
             tmp.delete()
-            throw IOException("couldn't save the APK")
+            throw IOException("couldn't save the APK", e)
         }
     }
 

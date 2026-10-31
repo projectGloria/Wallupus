@@ -28,13 +28,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.wallupus.WallupusApp
-import dev.wallupus.filter.Filters
 import dev.wallupus.filter.UpdateWorker
 import dev.wallupus.vpn.WallupusVpnService
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -114,15 +110,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startVpn() {
+        // PacketLoop.run() triggers an immediate blocklist update on first run or when stale,
+        // which also covers Always-On VPN starts that never pass through MainActivity.
         WallupusVpnService.start(this)
-        // First run: nothing to block with yet, so fetch lists right away instead of in a week.
-        // Wait for the saved list to load first; checking status right away can read 0 while
-        // the load is still in flight and trigger a needless download.
-        val app = applicationContext
-        WallupusApp.appScope.launch(Dispatchers.IO) {
-            Filters.ensureLoaded()
-            if (Filters.status.value.listDomains == 0) UpdateWorker.runNow(app)
-        }
     }
 
     private companion object {

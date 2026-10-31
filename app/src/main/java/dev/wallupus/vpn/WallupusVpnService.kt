@@ -44,13 +44,13 @@ class WallupusVpnService : VpnService() {
     private fun startTunnel() {
         if (tun != null) return
         val pfd = try {
-            Builder()
+            val builder = Builder()
                 .setSession("Wallupus") // shown in the VPN dialog and Settings → VPN
                 .addAddress(TUN_V4, 32)
                 .addAddress(TUN_V6, 128)
                 .addDnsServer(DNS_V4)
                 .addDnsServer(DNS_V6)
-                // The whole trick: only the fake resolver addresses are routed to us.
+                // The whole trick: only resolver addresses are routed to us.
                 .addRoute(DNS_V4, 32)
                 .addRoute(DNS_V6, 128)
                 // Our own DoH/list traffic must bypass the tunnel, or we'd resolve via ourselves.
@@ -64,7 +64,13 @@ class WallupusVpnService : VpnService() {
                         this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
                     ),
                 )
-                .establish() // null = user revoked consent (VpnService.prepare() needed again)
+            // Trap well-known public resolver IPs too: browsers (Chrome's built-in DoH provider
+            // table) and apps with hardcoded 8.8.8.8 / 1.1.1.1 otherwise bypass system DNS by IP.
+            // Plain UDP/53 to these IPs gets filtered and answered by PacketLoop; TCP/443 (DoH)
+            // and TCP/853 (DoT) get an immediate TCP RST so the client falls back to DNS_V4/V6.
+            TRAP_V4.forEach { builder.addRoute(it, 32) }
+            TRAP_V6.forEach { builder.addRoute(it, 128) }
+            builder.establish() // null = user revoked consent (VpnService.prepare() needed again)
         } catch (e: Exception) {
             // IllegalStateException (not prepared) / SecurityException / bad config.
             Log.w(TAG, "establish failed", e)
@@ -127,6 +133,22 @@ class WallupusVpnService : VpnService() {
         private const val DNS_V4 = "10.111.222.1"
         private const val TUN_V6 = "fd00:5e:1::2"
         private const val DNS_V6 = "fd00:5e:1::1"
+
+        // Dedicated public DNS anycast IPs (Google, Cloudflare, Quad9, OpenDNS, AdGuard).
+        private val TRAP_V4 = arrayOf(
+            "8.8.8.8", "8.8.4.4",
+            "1.1.1.1", "1.0.0.1",
+            "9.9.9.9", "149.112.112.112",
+            "208.67.222.222", "208.67.220.220",
+            "94.140.14.14", "94.140.15.15",
+        )
+        private val TRAP_V6 = arrayOf(
+            "2001:4860:4860::8888", "2001:4860:4860::8844",
+            "2606:4700:4700::1111", "2606:4700:4700::1001",
+            "2620:fe::fe", "2620:fe::9",
+            "2620:119:35::35", "2620:119:53::53",
+            "2a10:50c0::ad1:ff", "2a10:50c0::ad2:ff",
+        )
 
         // The tun is local-only, so a large MTU costs nothing and means big DNS answers
         // (DNSSEC, long TXT/HTTPS records) never get truncated → no TCP fallback to implement.

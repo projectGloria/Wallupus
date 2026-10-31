@@ -30,7 +30,7 @@ Commit the regenerated metadata with the dependency change. CI builds on Linux, 
 
 ## Architecture
 
-**Tunnel trick** (`vpn/WallupusVpnService.kt`): the VPN advertises fake resolver IPs and routes *only those /32 and /128* into the tun, and excludes its own package so DoH and list downloads don't loop back through it. Non-DNS traffic never enters the app, so there's no userspace TCP stack. No foreground service or notification: the system binds VPN services at foreground priority, and `FOREGROUND_SERVICE` is stripped from the merged manifest on purpose.
+**Tunnel trick** (`vpn/WallupusVpnService.kt`): the VPN advertises fake resolver IPs and routes *only those /32 and /128* (plus well-known public resolver anycast IPs to trap hardcoded-IP DNS/DoH/DoT bypasses) into the tun, and excludes its own package so DoH and list downloads don't loop back through it. Non-DNS traffic never enters the app, so there's no userspace TCP stack. TCP probes arriving on the tun (DoT on `:853`, hardcoded-IP DoH on `:443`) get an immediate TCP RST from `IpPacket.buildTcpReset` so the OS/browser falls back to UDP/53 without waiting on SYN timeouts. No foreground service or notification: the system binds VPN services at foreground priority, and `FOREGROUND_SERVICE` is stripped from the merged manifest on purpose.
 
 **Packet loop** (`vpn/PacketLoop.kt`), on the hot path:
 - One dedicated reader thread blocks in `Os.poll()` on the tun fd plus a self-pipe. `stop()` wakes it through the pipe because closing the fd from another thread doesn't reliably unblock it.

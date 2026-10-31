@@ -88,25 +88,25 @@ Home → **App** → **Check for update** asks the GitHub API for the latest rel
 
 ## Configure
 
-Edit `app/src/main/assets/config.json` and rebuild. It holds the upstreams with their bootstrap IPs, and the blocklist sources. HaGeZi Pro is included but disabled. Per-domain allow and block rules are set in the app: tap any entry in the Log tab.
+Edit `app/src/main/assets/config.json` and rebuild. It holds the upstreams with their bootstrap IPs, and the blocklist sources. Per-domain allow and block rules are set in the app: tap any entry in the Log tab.
 
 ## How it works
 
 | File | Job |
 |---|---|
-| `vpn/WallupusVpnService.kt` | Sets up the tunnel: fake DNS IPs, routes for only those IPs, excludes itself |
-| `vpn/PacketLoop.kt` | `poll()` loop over the tun fd; block → instant NXDOMAIN, else cache → DoH |
-| `net/IpPacket.kt` | Strict IPv4/IPv6/UDP parser and reply builder with checksums |
+| `vpn/WallupusVpnService.kt` | Sets up the tunnel: fake DNS IPs + public resolver trap routes, excludes itself |
+| `vpn/PacketLoop.kt` | `poll()` loop over the tun fd; block → instant NXDOMAIN, TCP → RST, else cache → DoH |
+| `net/IpPacket.kt` | Strict IPv4/IPv6/UDP parser, reply builder, and TCP RST synthesizer with checksums |
 | `dns/DnsMessage.kt` | Question parsing (rejects compression pointers), NXDOMAIN/SERVFAIL, TTL reading |
 | `dns/DohClient.kt` | RFC 8484 POST via OkHttp, bootstrap IPs, sticky failover |
 | `dns/DnsCache.kt` | 512-entry TTL-respecting LRU |
 | `filter/ListParser.kt` | hosts / plain domains / `\|\|domain^` + `@@` exceptions; everything else skipped |
-| `filter/DomainMatcher.kt` | Sorted 64-bit hash arrays + suffix walk; user rules beat lists |
+| `filter/DomainMatcher.kt` | Sorted 64-bit hash arrays + zero-alloc suffix walk; user rules beat lists |
 | `filter/CompiledLists.kt` | On-disk format, atomic writes, corrupt file → empty, never a crash |
 | `filter/BlocklistUpdater.kt` | Conditional GETs, 64 MB cap, stale-cache fallback, refuses near-empty results |
 | `filter/SourceCheck.kt` | Per-source check before a download replaces its cached copy (rejects error pages and >75% shrinks) |
 | `filter/RuleTargets.kt` | Rule-dialog choices, capped at the registrable domain via OkHttp's bundled Public Suffix List |
-| `filter/UpdateWorker.kt` | Weekly on Wi-Fi + battery OK; "Update now" on any network |
+| `filter/UpdateWorker.kt` | Daily on Wi-Fi + battery OK (plus on VPN start when stale); "Update now" on any network |
 | `update/AppUpdater.kt` | Manual app update: latest GitHub release → download (size-checked) → system installer |
 | `update/ReleaseTag.kt` | versionCode from a `v0.1.<count>` release tag |
 

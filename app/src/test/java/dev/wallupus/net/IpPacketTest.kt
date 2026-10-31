@@ -62,4 +62,33 @@ class IpPacketTest {
         assertNull(IpPacket.parseUdp(pkt, 25)) // shorter than the declared total length
         assertNull(IpPacket.parseUdp(ByteArray(0), 0))
     }
+
+    @Test fun buildsTcpResetForSynAndNeverRepliesToRst() {
+        // IPv4 TCP SYN from 10.111.222.2:54321 to 8.8.8.8:853, seq = 0x1000.
+        val syn = ByteArray(40).also {
+            it[0] = 0x45
+            put16(it, 2, 40)
+            it[8] = 64
+            it[9] = 6 // TCP
+            TestPackets.ip4("10.111.222.2").copyInto(it, 12)
+            TestPackets.ip4("8.8.8.8").copyInto(it, 16)
+            put16(it, 20, 54321)
+            put16(it, 22, 853)
+            put32(it, 24, 0x1000L)
+            it[32] = 0x50 // 20-byte TCP header
+            it[33] = 0x02 // SYN
+        }
+        val rst = IpPacket.buildTcpReset(syn, syn.size)!!
+        assertEquals(40, rst.size)
+        assert(verifies(rst, 0, 20)) { "IPv4 header checksum invalid on TCP RST" }
+        assertEquals(853, u16(rst, 20))
+        assertEquals(54321, u16(rst, 22))
+        assertEquals(0L, u32(rst, 24))
+        assertEquals(0x1001L, u32(rst, 28)) // ack = seq + 1 for SYN
+        assertEquals(0x14, rst[33].u8())     // RST | ACK
+        assertEquals(0, IpPacket.l4Checksum(6, rst, 20, 20, TestPackets.ip4("8.8.8.8"), TestPackets.ip4("10.111.222.2")))
+
+        // Never reply RST to an incoming RST.
+        assertNull(IpPacket.buildTcpReset(rst, rst.size))
+    }
 }

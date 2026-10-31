@@ -31,9 +31,12 @@ class UpdateWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
     companion object {
         private const val PERIODIC = "blocklist-weekly"
         private const val MANUAL = "blocklist-now"
+        const val STALE_MS = 24 * 60 * 60 * 1_000L
 
         fun schedulePeriodic(ctx: Context) {
-            val req = PeriodicWorkRequestBuilder<UpdateWorker>(7, TimeUnit.DAYS)
+            // Daily on unmetered Wi-Fi: conditional GETs make unchanged lists a tiny 304, while
+            // daily-rotating DGA ad domains (AdGuard / HaGeZi) stay fresh instead of 6 days behind.
+            val req = PeriodicWorkRequestBuilder<UpdateWorker>(1, TimeUnit.DAYS)
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.UNMETERED) // never burn mobile data
@@ -41,7 +44,7 @@ class UpdateWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
                         .build(),
                 )
                 .build()
-            // KEEP: re-scheduling on every app start must not reset the 7-day clock.
+            // KEEP: re-scheduling on every app start must not reset the clock.
             WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.KEEP, req)
         }
 

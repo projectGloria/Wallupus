@@ -36,13 +36,17 @@ class Prefs(ctx: Context) {
         putLong(K_LIFE_TOTAL, lifetimeTotal + total)
     }
 
-    /** HTTP validators per source, so weekly updates are a 304 when nothing changed. */
+    /** HTTP validators + last verified rule count per source, so updates skip re-parsing the old file. */
     fun validators(sourceId: String): Pair<String?, String?> =
         sp.getString("etag_$sourceId", null) to sp.getString("lastmod_$sourceId", null)
 
-    fun setValidators(sourceId: String, etag: String?, lastModified: String?) = sp.edit {
+    fun ruleCount(sourceId: String): Int? =
+        sp.getInt("rules_$sourceId", -1).takeIf { it > 0 }
+
+    fun setValidators(sourceId: String, etag: String?, lastModified: String?, rules: Int) = sp.edit {
         putString("etag_$sourceId", etag)
         putString("lastmod_$sourceId", lastModified)
+        putInt("rules_$sourceId", rules)
     }
 
     private companion object {

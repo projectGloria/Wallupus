@@ -1,20 +1,40 @@
-# Public DNS-over-HTTPS / DoT hostnames. Apps that resolve through these skip our filter,
-# so we block the hostnames themselves (every entry also covers its subdomains).
-# Wallupus's own upstream traffic is excluded from the VPN and uses bootstrap IPs,
-# so listing Quad9/Cloudflare here does not break the app itself.
+# Public DNS-over-HTTPS / DoT hostnames and anti-filter bypass domains.
+# Apps that resolve through these skip our filter, so we block the hostnames themselves
+# (every entry also covers its subdomains). Wallupus's own upstream traffic is excluded
+# from the VPN and uses bootstrap IPs, so listing Quad9/Cloudflare here does not break the app.
 #
 # Firefox canary: an NXDOMAIN here tells Firefox to keep its built-in DoH switched off.
 use-application-dns.net
+# RFC 9462 DDR (Discovery of Designated Resolvers): blocking _dns.resolver.arpa stops
+# browsers and Android from discovering upstream DoH/DoT IPs and upgrading around the VPN.
+resolver.arpa
 
+# Google
 dns.google
 dns.google.com
+8888.google
+
+# Cloudflare
 cloudflare-dns.com
 one.one.one.one
+every1dns.com
+
+# Quad9
 dns.quad9.net
 dns9.quad9.net
 dns10.quad9.net
 dns11.quad9.net
+ dns12.quad9.net
+dns13.quad9.net
+
+# Cisco OpenDNS / Umbrella
 doh.opendns.com
+doh.umbrella.com
+dns.umbrella.com
+familyshield.opendns.com
+sandbox.opendns.com
+
+# NextDNS / AdGuard / ControlD / RethinkDNS
 dns.nextdns.io
 dns.adguard-dns.com
 dns.adguard.com
@@ -24,3 +44,105 @@ doh.mullvad.net
 dns.controld.com
 freedns.controld.com
 doh.dns.sb
+dns.rethinkdns.com
+
+# Apple / ISP / Regional public DoH & DoT
+doh.dns.apple.com
+dns.alidns.com
+doh.pub
+dns.pub
+dot.pub
+doh.360.cn
+dot.360.cn
+dns.twnic.tw
+ordns.he.net
+dns.switch.ch
+doh.libredns.gr
+dot.libredns.gr
+dns.digitale-gesellschaft.ch
+odvr.nic.cz
+doh.applied-privacy.net
+dot1.applied-privacy.net
+doh.ffmuc.net
+dot.ffmuc.net
+private.canadianshield.cira.ca
+protected.canadianshield.cira.ca
+family.canadianshield.cira.ca
+common.dot.dns.yandex.net
+
+# Link-shortener full-page script & WebAssembly DGA anti-adblock fallback domains
+ouo.io
+bankingbloatedcaptive.com
+improperscrubbedvendor.com
+magsrv.com
+sacwumsf.com
+ajjgakza.in
+kkiawwtir.in
+mhybzynmuovq.in
+nucankaktop.in
+makciwhfyq.in
+qaflzymiq.in
+rcyanwrt.in
+abxbcuordows.in
+tzivigaxsxh.in
+vurafsquzd.in
+onklcuvcu.in
+xmaguskz.in
+zidafgogcspy.in
+akfvustajpz.in
+cuwqhujkat.in
+dhatucnhe.in
+ogqospcu.in
+gfokhoolbkhu.in
+oktavvavg.in
+pfoobfvapw.in
+tzimpezihat.in
+otqrunduqtcu.in
+fpiojnqa.in
+kudtapgad.in
+pizzmikimc.in
+oqmobxwufwu.in
+zuzaghbkajav.in
+fimxtefr.in
+obzdiqozp.in
+pumanqahhb.in
+tizoczopqmi.in
+ocmcazmweagv.in
+fwahajqf.in
+kraokjdma.in
+omjaxrhtiq.in
+thagurlcyol.in
+zcalriaktnko.in
+owvawbor.in
+kraolkazv.in
+pmakzeshoa.in
+ohjpfawpaap.in
+zafossbwimwu.in
+furahcnf.in
+ojfnmyrme.in
+parsulotqo.in
+tufaplacjqc.in
+osrdtuokrcaw.in
+fafritzr.in
+kurwwodzi.in
+odnocdhhyt.in
+tabhadtpegi.in
+zkuvfexwuong.in
+ofbbkeaf.in
+kzuaxvomf.in
+ptulmaatnk.in
+opnzrygcias.in
+zkufifkkyarg.in
+cadfmiwa.in
+ozkpzubzu.in
+ptodawfhao.in
+tpojcojurow.in
+obwahgankgfo.in
+ohqangas.in
+kawhkemuc.in
+olkmpeqata.in
+tiwodxtidkk.in
+zaswrahuvvru.in
+ovglwyla.in
+kisqahpiw.in
+onmgaqjtedci.in

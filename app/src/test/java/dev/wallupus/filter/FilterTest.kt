@@ -69,13 +69,18 @@ class FilterTest {
         val m = matcher(
             block = listOf("example.com", "tracker.io"),
             allow = listOf("cdn.example.com"),
-            userAllow = setOf("tracker.io"),
-            userBlock = setOf("cdn.example.com"),
+            userAllow = setOf("tracker.io", "parent.org"),
+            userBlock = setOf("cdn.example.com", "ads.parent.org"),
         )
         assertFalse("list exception beats list block", matcher(listOf("example.com"), listOf("cdn.example.com")).isBlocked("x.cdn.example.com"))
         assertTrue("user block beats list exception", m.isBlocked("cdn.example.com"))
         assertFalse("user allow beats list block", m.isBlocked("a.tracker.io"))
         assertEquals("tracker.io" to true, m.userRuleFor("a.tracker.io"))
+
+        // More-specific subdomain user rule beats a broader parent user rule, and matches userRuleFor.
+        assertFalse(m.isBlocked("parent.org"))
+        assertTrue("subdomain user block beats parent user allow", m.isBlocked("ads.parent.org"))
+        assertEquals("ads.parent.org" to false, m.userRuleFor("ads.parent.org"))
     }
 
     @Test fun compileDedupesAndRoundTripsThroughDisk() {

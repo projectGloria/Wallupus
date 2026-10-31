@@ -28,7 +28,7 @@
       "id": "hagezi-pro",
       "name": "HaGeZi Multi Pro",
       "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt",
-      "enabled": false
+      "enabled": true
     },
     {
       "id": "doh-bypass",

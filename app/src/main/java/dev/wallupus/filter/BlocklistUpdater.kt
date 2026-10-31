@@ -134,9 +134,12 @@ object BlocklistUpdater {
             }
             // HTTP 200 only says the server answered. Before the download replaces the cached
             // copy (and before its validators are saved), check that it's actually a list.
-            // Re-counting the cached copy costs one parse, and only when the source really changed.
             val fresh = tmp.reader().use(SourceCheck::countRules)
-            val previous = if (dest.exists()) dest.reader().use(SourceCheck::countRules) else null
+            val previous = if (dest.exists()) {
+                prefs.ruleCount(s.id) ?: dest.reader().use(SourceCheck::countRules)
+            } else {
+                null
+            }
             if (!SourceCheck.accept(fresh, previous)) {
                 tmp.delete()
                 return false
@@ -148,7 +151,7 @@ object BlocklistUpdater {
                 tmp.delete()
                 return false
             }
-            prefs.setValidators(s.id, r.header("ETag"), r.header("Last-Modified"))
+            prefs.setValidators(s.id, r.header("ETag"), r.header("Last-Modified"), fresh)
             return true
         }
     }

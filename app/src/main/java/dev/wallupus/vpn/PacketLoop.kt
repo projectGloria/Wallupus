@@ -6,10 +6,12 @@ import android.system.Os
 import android.system.OsConstants
 import android.system.StructPollfd
 import android.util.Log
+import dev.wallupus.WallupusApp
 import dev.wallupus.dns.DnsCache
 import dev.wallupus.dns.DnsMessage
 import dev.wallupus.dns.DohClient
 import dev.wallupus.filter.Filters
+import dev.wallupus.filter.UpdateWorker
 import dev.wallupus.log.QueryLog
 import dev.wallupus.net.IpPacket
 import dev.wallupus.net.UdpPacket
@@ -70,6 +72,12 @@ class PacketLoop(tun: ParcelFileDescriptor, private val doh: DohClient) {
 
     private fun run() {
         Filters.ensureLoaded() // never start answering with an empty matcher if a list exists
+        // First run (including via Always-On VPN) or stale (>24h): trigger a background refresh
+        // so daily-rotating DGA ad domains don't slip through.
+        val status = Filters.status.value
+        if (status.listDomains == 0 || System.currentTimeMillis() - status.lastUpdateMillis > UpdateWorker.STALE_MS) {
+            UpdateWorker.runNow(WallupusApp.instance)
+        }
         val buf = ByteArray(WallupusVpnService.MTU)
         val pollIn = OsConstants.POLLIN.toShort()
         val fds = arrayOf(
@@ -109,7 +117,13 @@ class PacketLoop(tun: ParcelFileDescriptor, private val doh: DohClient) {
     }
 
     private fun handle(buf: ByteArray, len: Int) {
-        val udp = IpPacket.parseUdp(buf, len) ?: return
+        val udp = IpPacket.parseUdp(buf, len)
+        if (udp == null) {
+            // Reject TCP probes (:853 DoT, :443 hardcoded-IP DoH) with an immediate RST so the
+            // OS/browser falls back to UDP/53 at once instead of waiting for SYN timeouts.
+            IpPacket.buildTcpReset(buf, len)?.let(::writePacket)
+            return
+        }
         if (udp.dstPort != 53) return
         val q = DnsMessage.parseQuery(udp.payload) ?: return
 
@@ -149,7 +163,10 @@ class PacketLoop(tun: ParcelFileDescriptor, private val doh: DohClient) {
     }
 
     private fun reply(req: UdpPacket, dnsPayload: ByteArray) {
-        val packet = IpPacket.buildUdpReply(req, dnsPayload)
+        writePacket(IpPacket.buildUdpReply(req, dnsPayload))
+    }
+
+    private fun writePacket(packet: ByteArray) {
         try {
             // One write() per packet on a tun fd = one packet; must not interleave across threads.
             synchronized(output) { output.write(packet) }
