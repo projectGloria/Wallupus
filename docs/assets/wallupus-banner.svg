@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 320" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#190F13" />
+      <stop offset="50%" stop-color="#0E0A0B" />
+      <stop offset="100%" stop-color="#070506" />
+    </linearGradient>
+    <radialGradient id="glowRed" cx="20%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#D11F40" stop-opacity="0.32" />
+      <stop offset="60%" stop-color="#7A0B1F" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#0E0A0B" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glowWhite" cx="50%" cy="40%" r="40%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.05" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#F3D9DC" />
+    </linearGradient>
+    <linearGradient id="crimsonBadge" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3D121B" />
+      <stop offset="100%" stop-color="#240B11" />
+    </linearGradient>
+    <filter id="subtleShadow">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.7" />
+    </filter>
+  </defs>
+
+  <style>
+    .headline { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 46px; font-weight: 800; letter-spacing: -0.5px; fill: url(#textGrad); }
+    .tagline { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 17px; font-weight: 500; fill: #D6C2C5; }
+    .subtag { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 13px; fill: #8F787C; }
+    .pill-text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 11px; font-weight: 600; fill: #FFA3B2; }
+  </style>
+
+  <!-- Background Base -->
+  <rect width="960" height="320" rx="16" fill="url(#bgGrad)" stroke="#2B1A20" stroke-width="1.5" />
+  <rect width="960" height="320" rx="16" fill="url(#glowRed)" />
+  <rect width="960" height="320" rx="16" fill="url(#glowWhite)" />
+
+  <!-- Subtle Decorative Grid Lines -->
+  <g stroke="#26161C" stroke-width="0.8" opacity="0.4">
+    <line x1="80" y1="0" x2="80" y2="320" />
+    <line x1="240" y1="0" x2="240" y2="320" />
+    <line x1="400" y1="0" x2="400" y2="320" />
+    <line x1="560" y1="0" x2="560" y2="320" />
+    <line x1="720" y1="0" x2="720" y2="320" />
+    <line x1="880" y1="0" x2="880" y2="320" />
+    <line x1="0" y1="80" x2="960" y2="80" />
+    <line x1="0" y1="160" x2="960" y2="160" />
+    <line x1="0" y1="240" x2="960" y2="240" />
+  </g>
+
+  <!-- Emblem Icon Container (Left side) -->
+  <g transform="translate(68, 64)" filter="url(#subtleShadow)">
+    <rect width="192" height="192" rx="44" fill="#0E0A0B" stroke="#D11F40" stroke-width="2.5" stroke-opacity="0.8"/>
+    
+    <!-- Wolf Emblem scaled inside (original 108dp canvas scaled ~1.44x) -->
+    <g transform="translate(18, 18) scale(1.44)">
+      <!-- Moon -->
+      <path fill="#FFF3D9DC" d="M56,27 A4.5,4.5 0 1,0 56,35 A4,4 0 0,1 56,27 Z" />
+      <!-- Left Face -->
+      <path fill="#9E1028" d="M54,40 L46,37 L38,26 L33,45 L27,50 L31,55 L27,61 L33,64 L41,73 L54,83 Z" />
+      <!-- Right Face -->
+      <path fill="#D11F40" d="M54,40 L62,37 L70,26 L75,45 L81,50 L77,55 L81,61 L75,64 L67,73 L54,83 Z" />
+      <!-- Jaw Facets -->
+      <path fill="#7A0B1F" d="M33,64 L41,73 L54,83 L51,70 Z" />
+      <path fill="#AA1431" d="M75,64 L67,73 L54,83 L57,70 Z" />
+      <!-- Ridge -->
+      <path fill="#EC5269" d="M54,42 L60,52 L57,70 L54,74 L51,70 L48,52 Z" />
+      <!-- Inner ears -->
+      <path fill="#4A0612" d="M40,31 L45,38 L37,43 Z M68,31 L63,38 L71,43 Z" />
+      <!-- Eyes and nose -->
+      <path fill="#0E0A0B" d="M36,49 L47,53 L45,57 L41,56 Z M72,49 L61,53 L63,57 L67,56 Z M50,70 L58,70 L54,75 Z" />
+    </g>
+  </g>
+
+  <!-- Typography (Right side) -->
+  <g transform="translate(300, 92)">
+    <text x="0" y="36" class="headline">Wallupus</text>
+    <text x="0" y="74" class="tagline">Minimalist DNS Ad &amp; Tracker Blocker for Android 10+</text>
+    <text x="0" y="104" class="subtag">Pure local VPN • RFC 8484 DNS-over-HTTPS • Zero telemetry • 100% RAM log</text>
+
+    <!-- Badges Row -->
+    <g transform="translate(0, 126)">
+      <!-- Pill 1 -->
+      <rect width="138" height="30" rx="15" fill="url(#crimsonBadge)" stroke="#8A172D" stroke-width="1"/>
+      <text x="14" y="19" class="pill-text">🎯 DNS-Only Tunnel</text>
+
+      <!-- Pill 2 -->
+      <rect x="150" width="134" height="30" rx="15" fill="url(#crimsonBadge)" stroke="#8A172D" stroke-width="1"/>
+      <text x="164" y="19" class="pill-text">🔒 Pinned DoH</text>
+
+      <!-- Pill 3 -->
+      <rect x="296" width="144" height="30" rx="15" fill="url(#crimsonBadge)" stroke="#8A172D" stroke-width="1"/>
+      <text x="310" y="19" class="pill-text">🧠 Zero Disk Logs</text>
+
+      <!-- Pill 4 -->
+      <rect x="452" width="154" height="30" rx="15" fill="url(#crimsonBadge)" stroke="#8A172D" stroke-width="1"/>
+      <text x="466" y="19" class="pill-text">⚡ Instant NXDOMAIN</text>
+    </g>
+  </g>
+</svg>
