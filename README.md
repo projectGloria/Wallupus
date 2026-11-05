@@ -162,6 +162,7 @@ flowchart TD
 ### In-App Controls
 - **Change Upstream**: Navigate to **Settings** and select any built-in resolver (Quad9, Cloudflare, Mullvad, AdGuard, Google) or enter a custom DoH URL. Upstream changes take effect on the very next query without cycling the VPN.
 - **Custom Filtering Rules**: Tap any row in the **Log** tab to open the rule builder. You can whitelist or block specific domains or register root-domain scopes via OkHttp's embedded Public Suffix List.
+- **Export History**: **Log → Export** saves the in-memory log (up to 20,000 app/domain groups since the app last started) as a CSV wherever you choose, one row per domain with how many times it was blocked or allowed and which apps asked. Nothing is written anywhere else.
 
 ### In-Source Defaults (`config.json`)
 The source configuration is located at `app/src/main/assets/config.json`:
@@ -196,6 +197,7 @@ The codebase is organized into cleanly decoupled, testable components:
 | [`filter/UpdateWorker.kt`](file:///C:/Users/Nihil/Desktop/Gloria%20Repoz/Wallupus/app/src/main/java/dev/wallupus/filter/UpdateWorker.kt) | Background WorkManager task: triggers daily on unmetered Wi-Fi and healthy battery state. |
 | [`log/QueryGroups.kt`](file:///C:/Users/Nihil/Desktop/Gloria%20Repoz/Wallupus/app/src/main/java/dev/wallupus/log/QueryGroups.kt) | In-memory log grouping key `(app, domain, outcome)` with query hit counts and timestamps. |
 | [`log/AppGroups.kt`](file:///C:/Users/Nihil/Desktop/Gloria%20Repoz/Wallupus/app/src/main/java/dev/wallupus/log/AppGroups.kt) | Partitions live queries into per-application sections with domain letter avatars and color accents. |
+| [`log/LogExport.kt`](file:///C:/Users/Nihil/Desktop/Gloria%20Repoz/Wallupus/app/src/main/java/dev/wallupus/log/LogExport.kt) | Folds the log to one row per (domain, outcome) and renders the injection-safe CSV for **Export**. |
 | [`ui/AppLabels.kt`](file:///C:/Users/Nihil/Desktop/Gloria%20Repoz/Wallupus/app/src/main/java/dev/wallupus/ui/AppLabels.kt) | Memory-cached package name and icon resolution for raw socket UIDs. |
 | [`update/AppUpdater.kt`](file:///C:/Users/Nihil/Desktop/Gloria%20Repoz/Wallupus/app/src/main/java/dev/wallupus/update/AppUpdater.kt) | On-demand GitHub Release updater: validates payload size, downloads APK, and triggers package installer. |
 

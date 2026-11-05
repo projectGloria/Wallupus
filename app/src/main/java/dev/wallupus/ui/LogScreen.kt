@@ -1,6 +1,11 @@
 package dev.wallupus.ui
 
+import android.content.Context
+import android.net.Uri
 import android.text.format.DateFormat
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -59,12 +64,20 @@ import dev.wallupus.log.QueryGroups
 import dev.wallupus.log.groupByApp
 import dev.wallupus.log.monogram
 import dev.wallupus.log.QueryLog
+import dev.wallupus.log.exportCsv
+import dev.wallupus.log.exportFileName
+import dev.wallupus.log.foldByDomain
 import kotlinx.coroutines.Dispatchers
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.sample
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import java.text.SimpleDateFormat
+import java.time.ZoneId
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
@@ -80,33 +93,29 @@ fun LogScreen() {
     // Snapshot at most twice a second; see QueryLog for why we don't stream every entry.
     // WithLifecycle so a backgrounded Log stops copying 1000 groups every 500 ms.
     val tick by remember { QueryLog.version.sample(500) }.collectAsStateWithLifecycle(QueryLog.version.value)
-    val entries = remember(tick) { QueryLog.snapshot() }
     // Remember the row's key, not the Entry: the dialog then follows live counts while it's open.
     var selectedKey by remember { mutableStateOf<String?>(null) }
 
-
-    // Derived, not stored: recomputed only when an input changes, never kept in sync by hand.
-    val shown = remember(entries, filter, top, query) {
-        val needle = query.trim().lowercase()
-        entries.asSequence()
-            .filter {
-                when (filter) {
-                    LogFilter.ALL -> true
-                    LogFilter.BLOCKED -> it.blocked
-                    LogFilter.ALLOWED -> !it.blocked
-                }
-            }
-            .filter { e ->
-                // App names come from the label cache: only apps already shown can match, which
-                // is every app on screen. Cheap enough at 1000 rows × 2 Hz to skip indexing.
-                needle.isEmpty() || needle in e.name ||
-                    AppLabels.peek(e.uid)?.name?.lowercase()?.contains(needle) == true
-            }
-            .toList()
-            .let { groupByApp(it, byCount = top) }
+    // Still derived, not stored by hand, but on Default instead of in composition: copying,
+    // filtering and sorting up to 20k groups at 2 Hz on main would drop frames. produceState
+    // relaunches (cancelling the stale run) when any key changes, and keeps showing the last
+    // result meanwhile, so typing in search never flashes an empty list. null = first build.
+    val view by produceState<LogView?>(null, tick, filter, top, query) {
+        value = withContext(Dispatchers.Default) { buildLogView(QueryLog.snapshot(), filter, top, query) }
     }
-    val totals = remember(shown) { shown.sumOf { it.total } }
-    val names = remember(shown) { shown.sumOf { it.entries.size } }
+    val entries = view?.entries.orEmpty()
+    val shown = view?.shown.orEmpty()
+    val totals = view?.totals ?: 0
+    val names = view?.names ?: 0
+
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // SAF "Save as": the user picks the destination, and that document is the only copy. No
+    // cache file, no FileProvider, no share intent (see CLAUDE.md privacy invariants).
+    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        uri ?: return@rememberLauncherForActivityResult // picker cancelled
+        scope.launch { exportLog(ctx.applicationContext, uri) }
+    }
     // Collapsed app sections, by UID. Saveable as a list: survives rotation and tab switches.
     var collapsed by rememberSaveable { mutableStateOf(listOf<Int>()) }
     val clock = rememberClockFormats()
@@ -139,10 +148,14 @@ fun LogScreen() {
                 color = Palette.TextLo,
             )
             if (entries.isNotEmpty()) {
+                TextButton(onClick = {
+                    exporter.launch(exportFileName(System.currentTimeMillis(), ZoneId.systemDefault()))
+                }) { Text("Export", color = Palette.TextLo) }
                 TextButton(onClick = QueryLog::clear) { Text("Clear", color = Palette.TextLo) }
             }
         }
-        if (shown.isEmpty()) {
+        // view == null: first build still running; say nothing rather than "Nothing yet".
+        if (view != null && shown.isEmpty()) {
             Text(
                 if (entries.isEmpty()) "Nothing yet. Turn blocking on and use your phone." else "No matches.",
                 Modifier.padding(16.dp),
@@ -178,10 +191,72 @@ fun LogScreen() {
         } else {
             // Every app that asked for this name (same outcome), busiest first. Derived from the
             // snapshot, since rows are per app now.
-            val askers = entries.filter { it.name == entry.name && it.blocked == entry.blocked }.sortedByDescending { it.count }
+            // Keyed so a 20k scan runs once per snapshot while the dialog is open, not per recomposition.
+            val askers = remember(entries, entry.name, entry.blocked) {
+                entries.filter { it.name == entry.name && it.blocked == entry.blocked }.sortedByDescending { it.count }
+            }
             EntryDialog(entry, askers, clock) { selectedKey = null }
         }
     }
+}
+
+/** One derived frame of the Log: the raw snapshot (for the dialog) plus the filtered sections. */
+private class LogView(
+    val entries: List<QueryGroups.Entry>,
+    val shown: List<AppGroup>,
+    val totals: Int,
+    val names: Int,
+)
+
+/** Runs on Dispatchers.Default. AppLabels.peek is a ConcurrentHashMap read, safe off main. */
+private fun buildLogView(entries: List<QueryGroups.Entry>, filter: LogFilter, top: Boolean, query: String): LogView {
+    val needle = query.trim().lowercase()
+    val shown = entries.asSequence()
+        .filter {
+            when (filter) {
+                LogFilter.ALL -> true
+                LogFilter.BLOCKED -> it.blocked
+                LogFilter.ALLOWED -> !it.blocked
+            }
+        }
+        .filter { e ->
+            // App names come from the label cache: only apps already shown can match, which is
+            // every app on screen.
+            needle.isEmpty() || needle in e.name ||
+                AppLabels.peek(e.uid)?.name?.lowercase()?.contains(needle) == true
+        }
+        .toList()
+        .let { groupByApp(it, byCount = top) }
+    return LogView(entries, shown, shown.sumOf { it.total }, shown.sumOf { it.entries.size })
+}
+
+/**
+ * Snapshot → one row per domain → CSV into the picked document. Fresh snapshot (the whole log,
+ * not the filtered view). Labels via AppLabels.load: cached, and resolves apps the user never
+ * scrolled to. Nothing outlives this call.
+ */
+private suspend fun exportLog(ctx: Context, uri: Uri) {
+    val result = withContext(Dispatchers.IO) {
+        runCatching {
+            val totals = foldByDomain(QueryLog.snapshot())
+            val labels = totals.flatMap { t -> t.byApp.map { it.first } }.distinct()
+                .associateWith { AppLabels.load(ctx, it).name }
+            val csv = exportCsv(totals, { labels[it] ?: "Unknown app" }, ZoneId.systemDefault())
+            // "wt": truncate, in case the user picked an existing file to overwrite.
+            val out = ctx.contentResolver.openOutputStream(uri, "wt") ?: throw IOException("Can't open file")
+            out.use { it.write(csv.toByteArray(Charsets.UTF_8)) }
+            totals.size
+        }
+    }
+    // Back on Main (the caller's scope): Toast needs a Looper thread.
+    val msg = result.fold(
+        { "Exported %,d domains".format(it) },
+        { e ->
+            if (e is CancellationException) throw e // leaving the screen isn't an error
+            "Export failed: ${e.message ?: e.javaClass.simpleName}"
+        },
+    )
+    Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show()
 }
 
 /** App section header: icon, name, and its blocked / total counts. Tap folds the section. */

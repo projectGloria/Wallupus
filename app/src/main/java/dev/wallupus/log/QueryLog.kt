@@ -12,9 +12,11 @@ import java.util.concurrent.atomic.AtomicLong
  * asked, is exactly the data this app exists to protect. Process dies → log is gone.
  */
 object QueryLog {
-    // Groups, not raw queries: 1000 distinct names covers hours of use, where 1000 raw entries
-    // used to be a few minutes of the same CDN names repeating.
-    private const val CAPACITY = 1000
+    // Groups, not raw queries: one row per (app, name, outcome), so 20k covers days of use.
+    // Each group is ~300–400 B of heap (key string, Group, qtypes, map node): ~6–8 MB when full.
+    // record() is O(1) whatever the size; the cost of going bigger is the UI's snapshot copy
+    // (LogScreen derives off main for that reason), so raise this with care.
+    private const val CAPACITY = 20_000
     private val groups = QueryGroups(CAPACITY)
 
     val sessionBlocked = AtomicLong()
