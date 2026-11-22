@@ -29,8 +29,6 @@ object Palette {
     val Graphite = Color(0xFF151012) // panels
     val GraphiteHigh = Color(0xFF1F171A) // raised: panel top edge, selected segment
     val Line = Color(0xFF2C2125) // hairline borders
-    val DiscTop = Color(0xFF2C2226) // idle button, lit corner
-    val DiscBottom = Color(0xFF130E10) // idle button, shaded corner
 
     val Crimson = Color(0xFFE3324E) // the brand red: lit dial, accents, "blocked"
     val CrimsonBright = Color(0xFFF2526B) // lit button, highlight corner

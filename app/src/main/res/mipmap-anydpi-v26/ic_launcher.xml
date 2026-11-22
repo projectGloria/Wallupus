@@ -1,9 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- minSdk 29 > 26, so the adaptive icon covers every device. The foreground is the she-wolf
-     artwork from Wallupus.ico, bottom-anchored so the cape runs off the mask and the ears and
-     moon stay inside it on circle and squircle masks. No monochrome layer: the art is a
-     photo-like engraving with no single-colour form, so themed-icon launchers show it in colour. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background" />
+    <background android:drawable="@mipmap/ic_launcher_background" />
     <foreground android:drawable="@mipmap/ic_launcher_foreground" />
 </adaptive-icon>

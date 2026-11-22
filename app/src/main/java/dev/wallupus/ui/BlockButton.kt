@@ -24,7 +24,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -50,7 +51,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
@@ -73,7 +73,7 @@ private const val TICKS = 72 // one every 5°, a long one every 30°
 private const val RINGS = 3
 
 /**
- * The Home tab's on/off control: a glassy disc carrying the brand funnel, inside a tick dial.
+ * The Home tab's on/off control: a glassy disc faced with the brand artwork, inside a tick dial.
  *
  * Every per-frame value (energy, glow, dial, rings, press, pulse) is read inside a draw or
  * graphicsLayer lambda, never in the composable body, so a running animation only invalidates the
@@ -100,7 +100,7 @@ fun BlockButton(
     // One transition for every state-dependent property, so they all retarget together when the
     // state flips mid-animation (e.g. tap on, consent denied half a second later).
     val transition = updateTransition(state, label = "block")
-    // 0 = idle graphite, 1 = lit crimson. The disc's gradient is a lerp on this single number.
+    // 0 = idle graphite, 1 = lit crimson. The art's dimming follows this single number.
     val energy by transition.animateFloat({ tween(550, easing = FastOutSlowInEasing) }, label = "energy") {
         when (it) {
             BlockState.Off -> 0f
@@ -174,14 +174,17 @@ fun BlockButton(
                     )
                 }
                 .clip(CircleShape)
-                .drawBehind {
-                    val e = energy
-                    // Diagonal light: lit upper-left, shaded lower-right, in both states.
+                // The artwork is the disc's whole face; these layers go over it.
+                .drawWithContent {
+                    drawContent()
+                    // Dims the art as the disc powers down (energy 1 = lit, 0 = idle).
+                    val dim = 0.35f * (1f - energy)
+                    if (dim > 0.005f) drawRect(Color.Black.copy(alpha = dim))
+                    // Bottom scrim so the label reads over the engraving.
                     drawRect(
-                        Brush.linearGradient(
-                            listOf(lerp(Palette.DiscTop, Palette.CrimsonBright, e), lerp(Palette.DiscBottom, Palette.CrimsonDeep, e)),
-                            start = Offset.Zero,
-                            end = Offset(size.width, size.height),
+                        Brush.verticalGradient(
+                            0.5f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.8f),
                         ),
                     )
                     // Glass sheen: a soft highlight near the top edge.
@@ -218,27 +221,26 @@ fun BlockButton(
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                WolfMark(Modifier.size(64.dp), muted = state == BlockState.Off)
-                Spacer(Modifier.size(12.dp))
-                AnimatedContent(
-                    state,
-                    transitionSpec = {
-                        (fadeIn(tween(220, delayMillis = 80)) + slideInVertically(tween(300)) { it / 2 }) togetherWith
-                            fadeOut(tween(100))
+            // fillMaxSize: the art covers the disc edge to edge, no ring of background around it.
+            WolfMark(Modifier.fillMaxSize(), muted = state == BlockState.Off)
+            AnimatedContent(
+                state,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp),
+                transitionSpec = {
+                    (fadeIn(tween(220, delayMillis = 80)) + slideInVertically(tween(300)) { it / 2 }) togetherWith
+                        fadeOut(tween(100))
+                },
+                label = "label",
+            ) { s ->
+                Text(
+                    when (s) {
+                        BlockState.Off -> "BLOCK"
+                        BlockState.Connecting -> "STARTING"
+                        BlockState.On -> "BLOCKING"
                     },
-                    label = "label",
-                ) { s ->
-                    Text(
-                        when (s) {
-                            BlockState.Off -> "BLOCK"
-                            BlockState.Connecting -> "STARTING"
-                            BlockState.On -> "BLOCKING"
-                        },
-                        style = Overline.copy(fontSize = 14.sp, letterSpacing = 3.sp),
-                        color = ink,
-                    )
-                }
+                    style = Overline.copy(fontSize = 14.sp, letterSpacing = 3.sp),
+                    color = ink,
+                )
             }
         }
     }
