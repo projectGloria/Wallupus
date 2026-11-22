@@ -46,8 +46,8 @@ sealed class Tab(val width: Dp) {
 val Tabs = listOf(Tab.Label("Home"), Tab.Label("Log"), Tab.Label("Lists"), Tab.Icon(R.drawable.ic_settings, "Settings"))
 
 /**
- * Wolf glyph, the DNS badge, then the tab control. The text wordmark is gone: four segments plus
- * the badge only fit a 360 dp phone without it, and the glyph alone carries the brand.
+ * Wolf artwork, the DNS badge, then the tab control. The text wordmark is gone: four segments plus
+ * the badge only fit a 360 dp phone without it, and the artwork alone carries the brand.
  */
 @Composable
 fun TopBar(tab: Int, onTab: (Int) -> Unit, dnsIcon: String?, dnsActive: Boolean, onDnsToggle: (Boolean) -> Unit) {
@@ -55,7 +55,7 @@ fun TopBar(tab: Int, onTab: (Int) -> Unit, dnsIcon: String?, dnsActive: Boolean,
         Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 10.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        WolfGlyph(Palette.Crimson, Modifier.size(width = 24.dp, height = 26.dp))
+        WolfMark(Modifier.size(30.dp))
         Spacer(Modifier.width(12.dp))
         DnsBadge(dnsIcon, dnsActive, onDnsToggle)
         Spacer(Modifier.weight(1f))

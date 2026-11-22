@@ -215,6 +215,7 @@ The project is structured into modular, single-responsibility Kotlin components:
 | [`app/src/main/java/dev/wallupus/log/QueryGroups.kt`](app/src/main/java/dev/wallupus/log/QueryGroups.kt) | Volatile RAM-only query grouping keyed by `(appUid, domain, outcome)` with hit counters. |
 | [`app/src/main/java/dev/wallupus/log/AppGroups.kt`](app/src/main/java/dev/wallupus/log/AppGroups.kt) | Groups active queries into application sections with monogram letter avatars. |
 | [`app/src/main/java/dev/wallupus/log/LogExport.kt`](app/src/main/java/dev/wallupus/log/LogExport.kt) | Exports query log to CSV with formula injection sanitisation. |
+| [`app/src/main/java/dev/wallupus/log/Expansion.kt`](app/src/main/java/dev/wallupus/log/Expansion.kt) | Log section open/closed state (Expand all / Collapse all plus per-app taps) and the All / Blocked / Allowed filter. |
 | [`app/src/main/java/dev/wallupus/ui/AppLabels.kt`](app/src/main/java/dev/wallupus/ui/AppLabels.kt) | Memory-cached package name and icon resolution for raw socket UIDs. |
 | [`app/src/main/java/dev/wallupus/update/AppUpdater.kt`](app/src/main/java/dev/wallupus/update/AppUpdater.kt) | Manual update checker querying GitHub Releases with APK download and prompt. |
 

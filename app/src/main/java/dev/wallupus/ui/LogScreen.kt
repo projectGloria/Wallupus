@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,12 +31,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,8 +48,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontFamily
@@ -57,9 +64,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.wallupus.R
+import dev.wallupus.WallupusApp
 import dev.wallupus.filter.Filters
 import dev.wallupus.filter.ruleTargets
 import dev.wallupus.log.AppGroup
+import dev.wallupus.log.Expansion
+import dev.wallupus.log.LogFilter
 import dev.wallupus.log.QueryGroups
 import dev.wallupus.log.groupByApp
 import dev.wallupus.log.monogram
@@ -72,7 +83,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.sample
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -82,7 +97,22 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-private enum class LogFilter(val label: String) { ALL("All"), BLOCKED("Blocked"), ALLOWED("Allowed") }
+/**
+ * Open/closed app sections, outliving the Log screen: switching tabs drops LogScreen from
+ * composition (and its rememberSaveable state with it), which used to reopen every section.
+ * Process-wide, like the log it describes; only the default survives a restart (Prefs).
+ */
+private object LogSections {
+    private val _state by lazy { MutableStateFlow(Expansion(WallupusApp.prefs.logOpenByDefault)) }
+    val state: StateFlow<Expansion> get() = _state.asStateFlow()
+
+    fun toggle(uid: Int) = _state.update { it.toggle(uid) }
+
+    fun setAll(open: Boolean) {
+        _state.value = _state.value.setAll(open)
+        WallupusApp.prefs.logOpenByDefault = open // apply(): async, fine on main
+    }
+}
 
 @OptIn(FlowPreview::class, ExperimentalFoundationApi::class) // stickyHeader
 @Composable
@@ -90,6 +120,7 @@ fun LogScreen() {
     var filter by rememberSaveable { mutableStateOf(LogFilter.ALL) }
     var top by rememberSaveable { mutableStateOf(false) } // false = most recent first
     var query by rememberSaveable { mutableStateOf("") }
+    var searching by rememberSaveable { mutableStateOf(false) }
     // Snapshot at most twice a second; see QueryLog for why we don't stream every entry.
     // WithLifecycle so a backgrounded Log stops copying 1000 groups every 500 ms.
     val tick by remember { QueryLog.version.sample(500) }.collectAsStateWithLifecycle(QueryLog.version.value)
@@ -116,8 +147,7 @@ fun LogScreen() {
         uri ?: return@rememberLauncherForActivityResult // picker cancelled
         scope.launch { exportLog(ctx.applicationContext, uri) }
     }
-    // Collapsed app sections, by UID. Saveable as a list: survives rotation and tab switches.
-    var collapsed by rememberSaveable { mutableStateOf(listOf<Int>()) }
+    val sections by LogSections.state.collectAsStateWithLifecycle()
     val clock = rememberClockFormats()
 
     Column {
@@ -130,23 +160,46 @@ fun LogScreen() {
             }
             Spacer(Modifier.weight(1f))
             FilterChip(selected = top, onClick = { top = !top }, label = { Text("Top") })
+            // Search hides behind an icon: the always-on field took a row of its own. Closing it
+            // also clears the query, so no filter is left applied out of sight.
+            IconButton(
+                onClick = {
+                    if (searching) query = ""
+                    searching = !searching
+                },
+                Modifier.size(40.dp),
+            ) {
+                Image(
+                    painterResource(R.drawable.ic_search),
+                    contentDescription = if (searching) "Close search" else "Search",
+                    modifier = Modifier.size(22.dp),
+                    colorFilter = ColorFilter.tint(if (searching) Palette.Crimson else Palette.TextLo),
+                )
+            }
         }
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-            placeholder = { Text("Search domain or app", color = Palette.TextLo) },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            shape = RoundedCornerShape(14.dp),
-        )
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "%,d apps · %,d names · %,d lookups".format(shown.size, names, totals),
-                Modifier.weight(1f),
-                style = MaterialTheme.typography.bodySmall,
-                color = Palette.TextLo,
+        if (searching) {
+            val focus = remember { FocusRequester() }
+            // Opened by a tap, so put the cursor in it right away.
+            LaunchedEffect(Unit) { focus.requestFocus() }
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).focusRequester(focus),
+                placeholder = { Text("Search domain or app", color = Palette.TextLo) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                shape = RoundedCornerShape(14.dp),
             )
+        }
+        Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (shown.isNotEmpty()) {
+                // Says what a tap will do: every visible section open, so offer to collapse them.
+                val allOpen = sections.allOpen(shown.map { it.uid })
+                TextButton(onClick = { LogSections.setAll(!allOpen) }) {
+                    Text(if (allOpen) "Collapse all" else "Expand all", color = Palette.TextLo)
+                }
+            }
+            Spacer(Modifier.weight(1f))
             if (entries.isNotEmpty()) {
                 TextButton(onClick = {
                     exporter.launch(exportFileName(System.currentTimeMillis(), ZoneId.systemDefault()))
@@ -154,6 +207,14 @@ fun LogScreen() {
                 TextButton(onClick = QueryLog::clear) { Text("Clear", color = Palette.TextLo) }
             }
         }
+        Text(
+            "%,d apps · %,d names · %,d lookups".format(shown.size, names, totals),
+            Modifier.padding(start = 16.dp, end = 16.dp, bottom = 4.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = Palette.TextLo,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
         // view == null: first build still running; say nothing rather than "Nothing yet".
         if (view != null && shown.isEmpty()) {
             Text(
@@ -166,12 +227,10 @@ fun LogScreen() {
             // Stable keys per app header and per (app, name, outcome) row: Compose moves a row
             // instead of rebuilding it, and animateItem slides it to its new place.
             shown.forEach { group ->
-                val open = group.uid !in collapsed
+                val open = sections.isOpen(group.uid)
                 // Sticky: while scrolling a chatty app's domains, you still see whose they are.
                 stickyHeader(key = "app:${group.uid}") {
-                    AppHeader(group, open, clock) {
-                        collapsed = if (open) collapsed + group.uid else collapsed - group.uid
-                    }
+                    AppHeader(group, open, clock) { LogSections.toggle(group.uid) }
                 }
                 if (open) {
                     items(group.entries, key = { it.key }) { e ->
@@ -212,13 +271,7 @@ private class LogView(
 private fun buildLogView(entries: List<QueryGroups.Entry>, filter: LogFilter, top: Boolean, query: String): LogView {
     val needle = query.trim().lowercase()
     val shown = entries.asSequence()
-        .filter {
-            when (filter) {
-                LogFilter.ALL -> true
-                LogFilter.BLOCKED -> it.blocked
-                LogFilter.ALLOWED -> !it.blocked
-            }
-        }
+        .filter(filter::matches)
         .filter { e ->
             // App names come from the label cache: only apps already shown can match, which is
             // every app on screen.

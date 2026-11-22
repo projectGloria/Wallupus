@@ -53,6 +53,14 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean(K_DNS, true)
         set(v) = sp.edit { putBoolean(K_DNS, v) }
 
+    /**
+     * Log tab: app sections start open ("Expand all") or closed. Only this default is stored;
+     * which apps were tapped open or shut stays in RAM with the log itself (see log/Expansion.kt).
+     */
+    var logOpenByDefault: Boolean
+        get() = sp.getBoolean(K_LOG_OPEN, false)
+        set(v) = sp.edit { putBoolean(K_LOG_OPEN, v) }
+
     val lifetimeBlocked: Long get() = sp.getLong(K_LIFE_BLOCKED, 0L)
     val lifetimeTotal: Long get() = sp.getLong(K_LIFE_TOTAL, 0L)
 
@@ -86,5 +94,6 @@ class Prefs(ctx: Context) {
         const val K_CUSTOM_BOOT = "custom_doh_bootstrap"
         const val K_BLOCKING = "mode_blocking"
         const val K_DNS = "mode_dns"
+        const val K_LOG_OPEN = "log_open_by_default"
     }
 }

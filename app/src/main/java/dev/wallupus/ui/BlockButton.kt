@@ -219,7 +219,7 @@ fun BlockButton(
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                WolfGlyph(ink, Modifier.size(width = 44.dp, height = 47.dp))
+                WolfMark(Modifier.size(64.dp), muted = state == BlockState.Off)
                 Spacer(Modifier.size(12.dp))
                 AnimatedContent(
                     state,

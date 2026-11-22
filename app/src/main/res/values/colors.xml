@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#FF0E0A0B</color>
+    <!-- The artwork's red field, so the adaptive background and the art meet without a seam. -->
+    <color name="ic_launcher_background">#FFB40102</color>
     <!-- = Palette.Ink: the window behind the first Compose frame, so cold start doesn't flash grey. -->
     <color name="window_background">#FF0A0708</color>
 </resources>
